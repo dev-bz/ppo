@@ -1,0 +1,117 @@
+{
+	
+	"Skeleton": 
+	{
+		"Joints": 
+		[
+			{
+				"Name": "root",
+				"Type": "none",
+				"Parent": -1,
+				"AttachX": 0,
+				"AttachY": 0,
+				"AttachZ": 0,	
+				"AttachThetaX": 0,
+				"AttachThetaY": 0,
+				"AttachThetaZ": 0,
+				"LimLow0": 1,
+				"LimHigh0": 0,
+				"TorqueLim": 0,
+				"IsEndEffector": 0,
+				"DiffWeight": 1
+
+			},
+
+			{
+				"Name": "torso",
+				"Type": "spherical",
+				"Parent": 0,
+				"AttachX": 0,
+				"AttachY": 0.1,
+				"AttachZ": 0,	
+				"AttachThetaX": 0,
+				"AttachThetaY": 0,
+				"AttachThetaZ": 0,
+				"LimLow0": -0.5,
+				"LimHigh0": 0.5,
+				"LimLow1": -1,
+				"LimHigh1": 1,
+				"LimLow2": -1,
+				"LimHigh2": 1,
+				"TorqueLim": 200,
+				"IsEndEffector": 0,
+				"DiffWeight": 0.5
+
+			},
+
+			{
+				"Name": "right_hip",
+				"Type": "spherical",
+				"Parent": 0,
+				"AttachX": 0,
+				"AttachY": 0,
+				"AttachZ": 0.085,
+				"AttachThetaX": 0,
+				"AttachThetaY": 0,
+				"AttachThetaZ": 0,
+				"LimLow0": -1.2,
+				"LimHigh0": 1.2,
+				"LimLow1": -1,
+				"LimHigh1": 1,
+				"LimLow2": -2.57,
+				"LimHigh2": 2.57,
+				"TorqueLim": 200,
+				"IsEndEffector": 0,
+				"DiffWeight": 0.5
+			},
+
+			{
+				"Name": "right_knee",
+				"Type": "revolute",
+				"Parent": 2,
+				"AttachX": 0,
+				"AttachY": -0.4215,
+				"AttachZ": 0,
+				"AttachThetaX": 0,
+				"AttachThetaY": 0,
+				"AttachThetaZ": 0,
+				"LimLow0": -3.14,
+				"LimHigh0": 0,
+				"TorqueLim": 150,
+				"IsEndEffector": 0,
+				"DiffWeight": 0.3
+			}
+		],
+		"PDControllers": 
+		[
+			{
+				"Name": "root",
+				"Kp": 0,
+				"Kd": 0,
+				"TargetTheta0": 0,
+				"UseWorldCoord": 0
+			},
+			{
+				"Name": "one",
+				"Kp": 300,
+				"Kd": 30,
+				"TargetTheta0": 0,
+				"UseWorldCoord": 0
+			},
+			{
+				"Name": "two",
+				"Kp": 300,
+				"Kd": 30,
+				"TargetTheta0": 0.9,
+				"UseWorldCoord": 0
+			},
+			{
+				"Name": "three",
+				"Kp": 300,
+				"Kd": 30,
+				"TargetTheta0": 0.0,
+				"UseWorldCoord": 0
+			}
+		]
+	}
+}

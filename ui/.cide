@@ -1,0 +1,1 @@
+{"append":[],"appendChanged":false,"build_mode":"user","cflags":"","ldflags":"-lEGL -lGLESv3 -lbox2d","mode":"Native","output_bin":"","run_mode":3,"shell_cleanup":"make clean","shell_command":"make \"CC\u003dgcc (CIDE:MAKEMODEARGS)\" \"CXX\u003dg++ (CIDE:MAKEMODEARGS)\" SHELL\u003d\"$SHELL\" OUTPUT\u003d(CIDE:BIN) -C (CIDE:CURSRCDIR)"}
