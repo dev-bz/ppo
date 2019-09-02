@@ -42,7 +42,7 @@ int Robot::Step() {
     ++step;
     if (step > maxStep) {
       if (!done) {
-        reward = shape;
+        //reward = shape;
         done = true;
       }
     }
@@ -106,11 +106,11 @@ void Robot::Action() {
     act[0] = -act[0];
   if (body) {
     auto speed = act[0] = fminf(fmaxf(act[0], -2.0f), 2.0f);
-    auto force = act[1] = fminf(fmaxf(act[1], -1.0), 5.0f);
+    auto force = act[1] = fminf(fmaxf(act[1], 0.0), 5.0f);
     const auto &wv = body->GetWorldVector(b2Vec2(0, force));
     /*body->ApplyForceToCenter(wv, false);
     body->ApplyTorque(speed, true);*/
-    body->SetAngularVelocity(speed * force * 0.35f);
+    body->SetAngularVelocity(speed * force * 0.5f);
     body->SetLinearVelocity(wv);
     // body->SetTransform(body->GetPosition()+b2Vec2(force,0), 0);
   }

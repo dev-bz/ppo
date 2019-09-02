@@ -167,7 +167,7 @@ int Trainer::postUpdate(float shape, const std::vector<float> &o_input,
     net.SetTrainParam(param);
     save_stddev = s;
     s = fmaxf(s * 0.998765, 0.05);
-    for (int i = 0; i < 50; ++i) {
+    for (int i = 0; i < 10; ++i) {
       this->value.trainNet();
       exp = this->net.trainNet();
     }

@@ -27,8 +27,8 @@ Robot robot;
 void Robot::Draw() {
   auto c = body->GetPosition();
   c = body->GetWorldPoint(b2Vec2(0, 2.0));
-  b2Rot r(act[0] * 0.75f);
-  auto d = body->GetWorldVector(0.5f*r.GetYAxis());
+  b2Rot r(act[0] * 0.5f);
+  auto d = body->GetWorldVector(0.5f * r.GetYAxis());
   g_debugDraw.DrawSegment(c + d, c - d, b2Color(1, 1, 1, 1));
   d = body->GetWorldPoint(b2Vec2(0.0, 1.6 + act[1]));
   g_debugDraw.DrawSegment(c, d, b2Color(1, 1, 1, 1));
@@ -99,9 +99,12 @@ void Robot::Draw() {
     g_debugDraw.DrawSegment(
         b2Vec2(-8.5, i * 0.1 + 4.5),
         b2Vec2(net.tuple->adv[i] * 0.25 - 8.5, i * 0.1 + 4.5),
-        net.tuple->obs[2 * i] > 0
-            ? b2Color(1, 1 - net.tuple->obs[2 * i], 1 - net.tuple->obs[2 * i])
-            : b2Color(0, -net.tuple->obs[2 * i], 0));
+        b2Color(1, 1, 1));
+    g_debugDraw.DrawSegment(b2Vec2(net.tuple->states[net.inputSize * i + 0],
+                                   net.tuple->states[net.inputSize * i + 1]),
+                            b2Vec2(net.tuple->_states[net.inputSize * i + 0],
+                                   net.tuple->_states[net.inputSize * i + 1]),
+                            b2Color(0.5, 0.75, 1.0));
   }
   g_debugDraw.DrawSegment(b2Vec2(-7, +4.5),
                           b2Vec2(-7, net.tuple->position * 0.1 + 4.5),
@@ -351,10 +354,10 @@ void box2d_init() {
         /*b2RevoluteJointDef j;
         j.Initialize(m_groundBody, a, b2Vec2(def.position.x, def.position.y));
         auto b = (b2RevoluteJoint *)w->CreateJoint(&j);*/
-        robot.Init(a , "data/tmp"); /*
-                 robot.train = false;
-                 robot.net.s = 0.1;
-                 robot.maxStep = 200;*/
+        robot.Init(a, "data/tmp"); /*
+                robot.train = false;
+                robot.net.s = 0.1;
+                robot.maxStep = 200;*/
       }
     }
   }
