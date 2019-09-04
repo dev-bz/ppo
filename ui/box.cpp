@@ -26,7 +26,13 @@ struct Robot : public testBox::Robot {
 Robot robot;
 void Robot::Draw() {
   auto c = body->GetPosition();
+
+  /*{
+    auto e = b2MulT(body->GetTransform(), target);
+    g_debugDraw.DrawSegment(c, e, b2Color(1, 0.75, 0.5, 1));
+  }*/
   c = body->GetWorldPoint(b2Vec2(0, 2.0));
+  g_debugDraw.DrawCircle(c, 0.25f, b2Color(1.0f, 1.0f, 0.2f));
   b2Rot r(act[0] * 0.5f);
   auto d = body->GetWorldVector(0.5f * r.GetYAxis());
   g_debugDraw.DrawSegment(c + d, c - d, b2Color(1, 1, 1, 1));

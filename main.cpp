@@ -31,6 +31,7 @@ void Trainer::initTrainer(const char *model) {
   label.resize(outputSize, 0.25);
   // w.resize(256 * outputSize, 0.0);
   tuple.reset(new tExpTuple(256, inputSize, outputSize));
+  _tuple.reset(new tExpTuple(256, inputSize, outputSize));
   if (model) {
     net.Load(std::string(model) + std::string("_actor.bin"));
     value.Load(std::string(model) + std::string("_critic.bin"));
@@ -54,7 +55,7 @@ void Trainer::initTrainer(const char *model) {
 }
 const std::vector<float> &Trainer::preUpdate(const std::vector<float> &input) {
   // s = shape;
-  //state = input;
+  // state = input;
   auto &act = net.getValue(input);
   if (s >= 0.05)
     for (auto &i : act)
@@ -78,14 +79,23 @@ float NormalTD(float scale, float x) {
         return scale * sqrtf(-2.0f * logf(p) - logf(2.0f * M_PI) - 2.0f *
 logf(scale));
 }*/
+extern "C" float getReward(const float *target, const float *at, float *state,
+                           float *_state);
 int Trainer::postUpdate(float shape, const std::vector<float> &o_input,
                         const std::vector<float> &n_input,
-                        const std::vector<float> &act, bool done) {
+                        const std::vector<float> &act, bool done,
+                        const std::vector<float> &real) {
   // auto o = value.getValue(state)[0];
   // exp = cMathUtil::EvalGaussian(0, 1.0, 0.0);
   for (int i = 0; i < inputSize; ++i) {
     tuple->states[i + tuple->position * inputSize] = o_input[i];
     tuple->_states[i + tuple->position * inputSize] = n_input[i];
+  }
+  if (real.size() * tuple->maxStep != tuple->world.size()) {
+    tuple->world.resize(real.size() * tuple->maxStep);
+  }
+  for (int i = 0; i < real.size(); ++i) {
+    tuple->world[i + tuple->position * real.size()] = real[i];
   }
   for (int i = 0; i < outputSize; ++i) {
     tuple->actions[i + tuple->position * outputSize] = act[i];
@@ -93,84 +103,81 @@ int Trainer::postUpdate(float shape, const std::vector<float> &o_input,
   tuple->rewards[tuple->position] = shape;
   // tuple->values[tuple->position] = o;
   tuple->dones[tuple->position] = done;
+
   tuple->position = (tuple->position + 1) % tuple->maxStep;
-  if (/*tuple->position == 0 ||
-        (done && tuple->dones[tuple->maxStep] == false)*/ done) {
-    tuple->obs = tuple->states;
+  if (done) {
     auto &reward = tuple->rewards;
     auto &value = tuple->values;
-    auto &_value = tuple->_values;
+    // auto &_value = tuple->_values;
     auto &done = tuple->dones;
     auto &gaelam = tuple->adv;
     auto &ret = tuple->returns;
-    this->value.getValues(tuple->obs, value, 256);
-    this->value.getValues(tuple->_states, _value, 256);
-    this->net.getValues(tuple->obs, tuple->logp, 256);
-    // done[tuple->maxStep] = false;
-    /*if (value.size() == tuple->maxStep)
-      value.push_back(v);
-    else
-      value[tuple->maxStep] = v;*/
-    const float gamma = 0.975;
-    const float lam = 0.935;
-    float lastgaelam = 0.0f;
-    float total = 0.0;
-    float stddev = 0.0;
-// reward[tuple->maxStep - 1] = 1.0;
-#if 1
-    for (int t = (tuple->maxStep + tuple->position - 1) % tuple->maxStep;
-         t != tuple->position; t = (tuple->maxStep + t - 1) % tuple->maxStep) {
-      float nonterminal = done[t] ? 0.0f : 1.0f;
-      // v = reward[t] + gamma * v * nonterminal;
-      // float delta = v - value[t];
-      float delta = reward[t] + gamma * _value[t] * nonterminal - value[t];
-      gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam;
-      ret[t] = gaelam[t] + value[t];
-      total += gaelam[t];
-    }
-#else
-    //	return_t = np.zeros(path_len)
-    // last_val = rewards[-1] + gamma * val_t[-1]
-    // return_t[-1] = last_val
-    for (int i = tuple->maxStep - 1; i >= 0; --i) {
-      auto curr_r = reward[i];
-      auto next_ret = i == tuple->maxStep - 1 ? value[i + 1] : ret[i + 1];
-      auto curr_val =
-          curr_r + gamma * ((1.0 - lam) * value[i + 1] + lam * next_ret);
-      ret[i] = curr_val;
-    }
-#endif
-    total /= tuple->maxStep;
-    // if (total > 0) total = 0;
-    for (int t = tuple->maxStep - 1; t >= 0; --t) {
-      gaelam[t] -= total;
-      stddev += gaelam[t] * gaelam[t];
-    }
-    stddev = sqrtf(stddev / tuple->maxStep) + 0.001f;
-    for (int t = tuple->maxStep - 1; t >= 0; --t) {
-      gaelam[t] /= stddev;
-      // gaelam[t] = fmaxf(0.0f, gaelam[t] / stddev);
-      /*for (int i = 0; i < outputSize; ++i) {
-              auto idx = i + t * outputSize;
-              w[idx] = gaelam[t];
-              // tuple->logp[idx] = NormalLogp(s, tuple->actions[idx] -
-      tuple->logp[idx]);
-      }*/
-    }
-    this->value.LoadTrainData(tuple->obs, tuple->returns, std::vector<float>());
-    net.LoadTrainData(tuple->obs, tuple->actions, gaelam);
-    std::vector<float> param(4);
-    param[0] = s;
-    param[1] = 0;
-    param[2] = 0.8;
-    param[3] = 1.2;
-    net.SetTrainParam(param);
-    save_stddev = s;
+    if(drand48()>0.5f){
+        int target = -1;
+        int ssize = real.size();
+        for (int t, i = tuple->maxStep; i > 0; --i) {
+          t = (i + tuple->position - 1) % tuple->maxStep;
+          if (done[t]) {
+            if (target == -1) {
+              target = t;
+            } else
+              break;
+          }
+          if (target != -1)
+            reward[t] = getReward(tuple->world.data() + target * ssize,
+                                  tuple->world.data() + t * ssize,
+                                  tuple->states.data() + t * inputSize,
+                                  tuple->_states.data() + t * inputSize);
+        }
+  }
+      tuple->obs = tuple->states;
+      this->value.getValues(tuple->obs, value, 256);
+      auto nv = this->value.getValue(n_input)[0];
+      // this->value.getValues(tuple->_states, _value, 256);
+      // this->net.getValues(tuple->obs, tuple->logp, 256);
+      const float gamma = 0.975;
+      const float lam = 0.935;
+      float lastgaelam = 0.0f;
+      float total = 0.0;
+      float stddev = 0.0;
+
+      for (int t, i = tuple->maxStep; i > 0; --i) {
+        t = (i + tuple->position - 1) % tuple->maxStep;
+        float nonterminal = done[t] ? 0.0f : 1.0f;
+        // v = reward[t] + gamma * v * nonterminal;
+        // float delta = v - value[t];
+        float delta = reward[t] + gamma * nv * nonterminal - value[t];
+        gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam;
+        ret[t] = gaelam[t] + value[t];
+        total += gaelam[t];
+        nv = value[t];
+      }
+      total /= tuple->maxStep;
+      // if (total > 0) total = 0;
+      for (int t = tuple->maxStep - 1; t >= 0; --t) {
+        gaelam[t] -= total;
+        stddev += gaelam[t] * gaelam[t];
+      }
+      stddev = sqrtf(stddev / tuple->maxStep) + 0.001f;
+      for (int t = tuple->maxStep - 1; t >= 0; --t) {
+        gaelam[t] /= stddev;
+      }
+      this->value.LoadTrainData(tuple->obs, tuple->returns,
+                                std::vector<float>());
+      net.LoadTrainData(tuple->obs, tuple->actions, gaelam);
+      std::vector<float> param(4);
+      param[0] = s;
+      param[1] = 0;
+      param[2] = 0.8;
+      param[3] = 1.2;
+      net.SetTrainParam(param);
+      save_stddev = s;
+      for (int i = 0; i < 10; ++i) {
+        this->value.trainNet();
+        exp = this->net.trainNet();
+      }
+    
     s = fmaxf(s * 0.998765, 0.05);
-    for (int i = 0; i < 10; ++i) {
-      this->value.trainNet();
-      exp = this->net.trainNet();
-    }
     this->value.syncNet();
     this->net.syncNet();
     return 1;

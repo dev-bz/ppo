@@ -12,7 +12,7 @@ void Robot::Init(b2Body *b, const char *model) {
   body->SetMassData(&data);
   iter = 0;
   train = true;
-  maxStep = 39;
+  maxStep = 32;
   net.initTrainer(model);
   if (model)
     this->model = model;
@@ -21,7 +21,7 @@ void Robot::Init(b2Body *b, const char *model) {
   target.SetZero();
   act.resize(net.outputSize, 0.0f);
   input.resize(net.inputSize, 0.0f);
-  angle = body->GetAngle();
+  states.resize(6, 0.0f);
   position = body->GetPosition();
   /*inputs.resize(32 * 32 * net.inputSize, 0.0f);
   for (int y = 0; y < 32; ++y) {
@@ -42,13 +42,13 @@ int Robot::Step() {
     ++step;
     if (step > maxStep) {
       if (!done) {
-        //reward = shape;
+        reward -= 1.0;
         done = true;
       }
     }
     Update();
     if (train) {
-      ret = net.postUpdate(reward, old, real, act, done);
+      ret = net.postUpdate(reward, old, real, act, done, states);
     }
     if (done) {
       if (isnanf(act[0]) || isnanf(act[1])) {
@@ -63,6 +63,20 @@ int Robot::Step() {
     ++vStep;
   return ret;
 }
+extern "C" float getReward(const float *target, const float *at, float *state,
+                           float *_state) {
+  b2Vec2 point(target[3], target[4]);
+  b2Transform ot(b2Vec2(at[0], at[1]), b2Rot(at[2]));
+  b2Transform nt(b2Vec2(at[3], at[4]), b2Rot(at[5]));
+  b2Vec2 d = b2MulT(ot, point);
+  state[0] = d.x;
+  state[1] = d.y;
+  b2Vec2 e = b2MulT(nt, point);
+  _state[0] = e.x;
+  _state[1] = e.y;
+  return d.Length() - e.Length() + (target == at ? 1.0f : 0.0f);
+}
+
 void Robot::Update() {
   auto d = body->GetLocalPoint(target);
   d.y -= 2.0;
@@ -74,14 +88,23 @@ void Robot::Update() {
          input[3] = v.y*0.1;
          input[4] = a*0.1;*/
   real = input;
+
+  {
+    auto d = body->GetWorldPoint(b2Vec2(0.0f, 2.0f));
+    states[3] = d.x;
+    states[4] = d.y;
+    states[5] = body->GetAngle();
+  }
   if (filp)
     input[0] = -input[0];
-  angle = shape;
+  start = shape;
   shape = -sqrt(d.x * d.x + d.y * d.y /*+
             a   * a * 0.3 + v.x * v.x*0.2 + v.y * v.y * 0.2*/);
-  reward = shape - angle;
-  if (shape > -0.1)
+  reward = shape - start;
+  if (shape > -0.25) {
     done = true;
+    reward += 1;
+  }
 }
 void Robot::Reset() {
   float32 value = drand48();
@@ -97,16 +120,22 @@ void Robot::Reset() {
   Update();
   done = false;
   filp = !filp && train;
+  start = shape;
   // shape = 0.0f;
 }
 void Robot::Action() {
   old = real;
+  {
+    states[0] = states[3];
+    states[1] = states[4];
+    states[2] = states[5];
+  }
   act = net.preUpdate(input);
   if (filp)
     act[0] = -act[0];
   if (body) {
     auto speed = act[0] = fminf(fmaxf(act[0], -2.0f), 2.0f);
-    auto force = act[1] = fminf(fmaxf(act[1], 0.0), 5.0f);
+    auto force = act[1] = fminf(fmaxf(act[1], -0.5f), 5.0f);
     const auto &wv = body->GetWorldVector(b2Vec2(0, force));
     /*body->ApplyForceToCenter(wv, false);
     body->ApplyTorque(speed, true);*/

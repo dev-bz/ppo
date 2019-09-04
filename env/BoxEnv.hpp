@@ -7,14 +7,13 @@
 namespace testBox {
 struct Robot {
 	b2Body *body;
-        float32 angle;
 	b2Vec2 position, target;
 	int iter, step, maxStep, keepTime;
 	int vStep;
 	Trainer net;
-	float shape,reward;
+	float start,shape,reward;
 	bool done, train,filp;
-	std::vector<float> input, act,real,old;
+	std::vector<float> input, act,real,old,states;
 	std::string model;
 	void Init(b2Body *b, const char *model = nullptr);
 	void Action();
