@@ -69,11 +69,11 @@ extern "C" float getReward(const float *target, const float *at, float *state,
   b2Transform ot(b2Vec2(at[0], at[1]), b2Rot(at[2]));
   b2Transform nt(b2Vec2(at[3], at[4]), b2Rot(at[5]));
   b2Vec2 d = b2MulT(ot, point);
-  state[0] = d.x;
-  state[1] = d.y;
+  state[0] = d.x*0.1;
+  state[1] = d.y*0.1;
   b2Vec2 e = b2MulT(nt, point);
-  _state[0] = e.x;
-  _state[1] = e.y;
+  _state[0] = e.x*0.1;
+  _state[1] = e.y*0.1;
   return d.Length() - e.Length() + (target == at ? 1.0f : 0.0f);
 }
 
@@ -82,9 +82,9 @@ void Robot::Update() {
   d.y -= 2.0;
   auto v = body->GetLocalVector(body->GetLinearVelocity());
   float32 a = body->GetAngularVelocity();
-  input[0] = d.x;
-  input[1] = d.y;
-  input[2] = v.y > 0.0f ? 1.0f : 0.0f; /*
+  input[0] = d.x*0.1;
+  input[1] = d.y*0.1;
+  input[2] = 0.0f; /*
          input[3] = v.y*0.1;
          input[4] = a*0.1;*/
   real = input;
@@ -134,8 +134,8 @@ void Robot::Action() {
   if (filp)
     act[0] = -act[0];
   if (body) {
-    auto speed = act[0] = fminf(fmaxf(act[0], -2.0f), 2.0f);
-    auto force = act[1] = fminf(fmaxf(act[1], -0.5f), 5.0f);
+    auto speed = fminf(fmaxf(act[0], -2.0f), 2.0f);
+    auto force = fminf(fmaxf(act[1], -0.5f), 5.0f);
     const auto &wv = body->GetWorldVector(b2Vec2(0, force));
     /*body->ApplyForceToCenter(wv, false);
     body->ApplyTorque(speed, true);*/
@@ -197,7 +197,6 @@ static void *box2d_step(void *rb) {
   target = (Robot *)rb;
   if (target) {
     outputIter = 1;
-    robot_.net.s = target->net.s;
   }
   running = true;
   while (running) {
@@ -252,7 +251,6 @@ static void sync_Network() {
   if (target) {
     lock.lock();
     if (!running) {
-      target->net.s = robot_.net.s;
       target->train = true;
       target->maxStep = robot_.maxStep;
     }

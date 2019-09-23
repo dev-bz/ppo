@@ -1,0 +1,323 @@
+name: "PPONet"
+
+layer { 
+  name: 'input' 
+  type: 'Input' 
+  top: "input"
+  top: "label"
+  top: "adv"
+  top: "logoldprob"
+  input_param {
+    shape: { dim: 256 dim: 5 } 
+    shape: { dim: 256 dim: 2 }
+    shape: { dim: 256}
+    shape: { dim: 256}
+  }
+  include: { phase: TRAIN }
+}
+
+layer { 
+  name: 'input'
+  type: 'Input'
+  top: 'input'
+  input_param { 
+    shape: { dim: 1 dim: 5 } 
+  } 
+
+  include: { phase: TEST }
+}
+
+layer {
+  name: "ip0"
+  type: "InnerProduct"
+  bottom: "input"
+  top: "ip0"
+  param {
+    lr_mult: 1
+	decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+	decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 128
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+
+layer {
+  name: "relu0"
+  type: "ReLU"
+  bottom: "ip0"
+  top: "relu0"
+}
+
+layer {
+  name: "ip1"
+  type: "InnerProduct"
+  bottom: "relu0"
+  top: "ip1"
+  param {
+    lr_mult: 1
+	decay_mult: 1
+  }
+  param {
+    lr_mult: 1
+	decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 128
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "ip1"
+  top: "relu1"
+}
+
+layer {
+  name: "output"
+  type: "InnerProduct"
+  bottom: "relu1"
+  top: "output"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  inner_product_param {
+    num_output: 2
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+
+layer {
+  name: "logstd"
+  type: "Parameter"
+  top: "logstd"
+  param {
+    lr_mult: 1
+  }
+  parameter_param {
+    shape: { dim: 1 dim: 2 } 
+  }
+}
+
+layer {
+  name: "std"
+  type: "Exp"
+  bottom: "logstd"
+  top: "std"
+}
+layer {
+  name: "logstd+"
+  type: "Log"
+  bottom: "std"
+  top: "logstd+"
+  log_param{
+    shift: 0.005
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "logstd_tile"
+  type: "Tile"
+  bottom: "logstd+"
+  top: "logstd_tile"
+  tile_param {
+    axis: 0
+    tiles: 256
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "1/std"
+  type: "Exp"
+  bottom: "logstd_tile"
+  top: "1/std"
+  exp_param {
+    scale: -1.0
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "x"
+  type: "Eltwise"
+  bottom: "output"
+  bottom: "label"
+  top: "x"
+  eltwise_param {
+    operation: SUM
+    coeff: 1.0
+    coeff: -1.0
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "x/std"
+  type: "Eltwise"
+  bottom: "x"
+  bottom: "1/std"
+  top: "x/std"
+  eltwise_param {
+    operation: PROD
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "(x/std)^2"
+  type: "Power"
+  bottom: "x/std"
+  top: "(x/std)^2"
+  power_param {
+    power: 2.0
+  }
+  include: { phase: TRAIN }
+}
+
+layer {
+  name: "logprob_"
+  type: "Eltwise"
+  bottom: "(x/std)^2"
+  bottom: "logstd_tile"
+  top: "logprob_"
+  eltwise_param {
+    operation: SUM
+    coeff: -0.5
+    coeff: -1.0
+  }
+  include: { phase: TRAIN }
+}
+
+layer {
+  name: "logprob"
+  type: "Reduction"
+  bottom: "logprob_"
+  top: "logprob"
+  reduction_param{
+       axis: 1
+       operation: SUM
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "prob"
+  type: "Exp"
+  bottom: "logprob"
+  top: "prob"
+  exp_param {
+  	shift: -0.9189385332046727
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "logratio"
+  type: "Eltwise"
+  bottom: "logprob"
+  bottom: "logoldprob"
+  top: "logratio"
+  eltwise_param {
+    operation: SUM
+    coeff: 1.0
+    coeff: -1.0
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "ratio"
+  type: "Exp"
+  bottom: "logratio"
+  top: "ratio"
+  include: { phase: TRAIN }
+}
+layer {
+  name: "clip_ratio"
+  type: "Clip"
+  bottom: "ratio"
+  top: "clip_ratio"
+  clip_param {
+    min: 0.8
+    max: 1.2
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "-adv"
+  type: "Power"
+  bottom: "adv"
+  top: "-adv"
+  power_param {
+    scale: -1.0
+  }
+  include: { phase: TRAIN }
+}
+
+layer {
+  name: "-ratio*adv"
+  type: "Eltwise"
+  bottom: "ratio"
+  bottom: "-adv"
+  top: "-ratio*adv"
+  eltwise_param {
+    operation: PROD
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "-clip_ratio*adv"
+  type: "Eltwise"
+  bottom: "clip_ratio"
+  bottom: "-adv"
+  top: "-clip_ratio*adv"
+  eltwise_param {
+    operation: PROD
+  }
+  include: { phase: TRAIN }
+}
+
+layer {
+  name: "max_ratio"
+  type: "Eltwise"
+  bottom: "-clip_ratio*adv"
+  bottom: "-ratio*adv"
+  top: "max_ratio"
+  eltwise_param {
+    operation: MAX
+  }
+  include: { phase: TRAIN }
+}
+
+layer {
+  name: "o_pseudoloss"
+  type: "Reduction"
+  bottom: "max_ratio"
+  top: "o_pseudoloss"
+  loss_weight: 1.0
+  reduction_param{
+       axis: 0
+       operation: MEAN
+  }
+  include: { phase: TRAIN }
+}

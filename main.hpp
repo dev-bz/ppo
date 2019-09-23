@@ -9,7 +9,7 @@ struct tExpTuple {
   std::vector<float> adv;
   std::vector<float> values;
   std::vector<float> returns;
-  //std::vector<float> logp;
+  std::vector<float> scale;
   int maxStep;
   int position;
   tExpTuple(int size, int state, int action);
@@ -18,7 +18,7 @@ struct Trainer {
   int inputSize, outputSize;
   Net net, value;
   // float px, py, vx, vy;
-  float s, exp, save_stddev;
+  float exp;
   std::vector<float> v_label;
   std::vector<float> label;
   // std::vector<float> w;

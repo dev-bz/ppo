@@ -87,11 +87,10 @@ void Robot::Draw() {
   float ty = 16 - (c.y * 15.5);
   g_debugDraw.DrawCircle(0.25 * b2Vec2(tx - 31.5, 15.5 - ty), 0.075,
                          b2Color(1, 1, 1));*/
-  static std::vector<float> vals;
-  net.value.getValues(net.tuple->obs, vals, 256);
+  const std::vector<float> &vals = net.tuple->values;
   for (int i = 0; i < 256; ++i) {
     g_debugDraw.DrawSegment(b2Vec2(-4, i * 0.1 + 4.5),
-                            b2Vec2(vals[i] * 0.25 - 4, i * 0.1 + 4.5),
+                            b2Vec2(vals[i] * 0.5 - 4, i * 0.1 + 4.5),
                             b2Color(0.25, 1, 0.25));
     g_debugDraw.DrawSegment(
         b2Vec2(-5.5, i * 0.1 + 4.5),
@@ -100,7 +99,7 @@ void Robot::Draw() {
 
     g_debugDraw.DrawSegment(
         b2Vec2(-7, i * 0.1 + 4.5),
-        b2Vec2(net.tuple->returns[i] * 0.25 - 7, i * 0.1 + 4.5),
+        b2Vec2(net.tuple->returns[i] * 0.5 - 7, i * 0.1 + 4.5),
         b2Color(1, 0.25, 0.25));
     g_debugDraw.DrawSegment(
         b2Vec2(-8.5, i * 0.1 + 4.5),
@@ -448,7 +447,10 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
 }*/
 // imguiLabel("Label");
 #ifndef DEMO
-  imguiSlider("exp", &robot.net.s, 0.05, 1.0, 0.001, true);
+  sprintf(info, "%.4f %.4f", robot.net.tuple->scale[0],
+          robot.net.tuple->scale[1]);
+
+  imguiSlider(info, &robot.net.exp, 0.0, 2.0, 0.001, true);
   imguiSlider("zoom", &g_camera.m_zoom, 0.25, 5.0, 0.001, true);
   if (imguiButton(updatePD ? "mutiPD" : "Signle", true)) {
     updatePD = !updatePD;
@@ -481,7 +483,6 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
           if (state == 2) {
             restore[i] = "runThread sync";
             testBox::syncNetwork(3);
-            robot.net.s = 0.05;
           } else if (state == 0) {
             restore[i] = "runThread ok";
             robot.train = false;

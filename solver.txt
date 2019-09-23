@@ -1,15 +1,15 @@
-net: "ppo_net.txt"
+net: "ppo.txt"
 type: "Adam"
 
 # The base learning rate, momentum and the weight decay of the network.
-base_lr: 0.0000051
-momentum: 0.9
-weight_decay: 0
+base_lr: 0.0005
+momentum: 0.95
+weight_decay: 0.0
 
 # The learning rate policy
 lr_policy: "fixed"
-gamma: 0.1
-power: 0.75
+gamma: 0.99
+power: 0.99
 # Display every 100 iterations
 display: 0
 

@@ -2,7 +2,7 @@ net: "value.txt"
 # type: "Adam"
 
 # The base learning rate, momentum and the weight decay of the network.
-base_lr: 0.00005
+base_lr: 0.0001
 momentum: 0.75
 weight_decay: 0
 

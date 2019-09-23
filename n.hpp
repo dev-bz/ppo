@@ -14,6 +14,7 @@ struct Net {
 	int GetBatchSize();
 	void LoadTrainData(const std::vector<float> &X, const std::vector<float> &Y, const std::vector<float> &W);
 	void SetTrainParam(const std::vector<float> &param);
+        void SetTrainParam(const char *from, const char *to);
 	float GetTrainResult();
 	static void CopyParams(const std::vector<caffe::Blob<float> *> &src_params,
 												 const std::vector<caffe::Blob<float> *> &dst_params);
@@ -22,6 +23,7 @@ struct Net {
 	void syncNet(bool train = true);
 	float trainNet();
 	std::vector<float> &getValue(const std::vector<float> &input);
+        std::vector<float> &getValue(const std::vector<float> &input,const char*second,std::vector<float> &output);
 	float getValues(const std::vector<float> &input, std::vector<float> &output, int batchSize = 1024);
 	void Save(const std::string &model_file);
 	void Load(const std::string &model_file);
