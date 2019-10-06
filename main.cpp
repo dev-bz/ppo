@@ -25,6 +25,7 @@ tExpTuple::tExpTuple(int size, int state, int action) {
   // for (auto &i : returns) i = drand48();
 }
 void Trainer::initTrainer(const char *model) {
+  startupCaffe();
   value.makeNet(inputSize, outputSize, "value.txt", "solver_value.txt");
   v_label.resize(outputSize, 0.25);
   net.makeNet(inputSize, outputSize, "ppo.txt", "solver.txt");
@@ -62,7 +63,7 @@ const std::vector<float> &Trainer::preUpdate(const std::vector<float> &input) {
   if (act.size() == cnt) {
     for (int j = 0; j < cnt; ++j) {
       auto &i = act[j];
-      i = cMathUtil::RandDoubleNorm(i, scale[j] + 0.005f);
+      i = cMathUtil::RandDoubleNorm(i, scale[j]);
     }
   }
   return act;
@@ -191,4 +192,7 @@ void Trainer::save(const char *model) {
     net.Save(std::string(model) + std::string("_actor.bin"));
     value.Save(std::string(model) + std::string("_critic.bin"));
   }
+}
+void Trainer::shutDown() {
+  shutDownCaffe();
 }

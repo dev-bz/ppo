@@ -35,6 +35,7 @@ void Robot::Init(b2Body *b, const char *model) {
   Reset();
   Action();
 }
+void Robot::Quit() { net.shutDown(); }
 int Robot::Step() {
   int ret = 0;
   if (vStep >= 4) {
@@ -184,6 +185,7 @@ static void box2d_init() {
   }
 }
 static void box2d_quit() {
+  robot_.Quit();
   if (w)
     delete w;
   w = nullptr;
@@ -209,9 +211,9 @@ static void *box2d_step(void *rb) {
       }
     }
   }
-  box2d_quit();
   // robot.SaveNet();
   sync_Network();
+  box2d_quit();
   runStep = 0;
   target = 0;
   outputIter = 0;

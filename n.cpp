@@ -121,13 +121,20 @@ void Net::syncNet(bool train) {
   }
 }
 static char proc[64] = {"a.out"};
-static int init = 1;
-void Net::makeNet(int &i, int &o, const char *net, const char *solver) {
-  if (init) {
+static int init = 0;
+void startupCaffe() {
+  if (init == 0) {
     char *argv[1] = {proc};
-    InitCaffe(argv);
-    init = 0;
+    //InitCaffe(argv);
   }
+  ++init;
+}
+void shutDownCaffe() {
+  //if (init == 1) google::ShutdownGoogleLogging();
+  if (init > 0)
+    --init;
+}
+void Net::makeNet(int &i, int &o, const char *net, const char *solver) {
   const char *SolverType;
   caffe::NetParameter p;
   caffe::SolverParameter param;

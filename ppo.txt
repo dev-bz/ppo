@@ -132,33 +132,13 @@ layer {
   top: "std"
 }
 layer {
-  name: "logstd+"
-  type: "Log"
-  bottom: "std"
-  top: "logstd+"
-  log_param{
-    shift: 0.005
-  }
-  include: { phase: TRAIN }
-}
-layer {
-  name: "logstd_tile"
-  type: "Tile"
-  bottom: "logstd+"
-  top: "logstd_tile"
-  tile_param {
-    axis: 0
-    tiles: 256
-  }
-  include: { phase: TRAIN }
-}
-layer {
   name: "1/std"
-  type: "Exp"
-  bottom: "logstd_tile"
+  type: "Power"
   top: "1/std"
-  exp_param {
-    scale: -1.0
+  bottom: "std"
+  power_param {
+    power: -1
+    shift: 0.005
   }
   include: { phase: TRAIN }
 }
@@ -176,10 +156,21 @@ layer {
   include: { phase: TRAIN }
 }
 layer {
+  name: "std_tile"
+  type: "Tile"
+  bottom: "1/std"
+  top: "std_tile"
+  tile_param {
+    axis: 0
+    tiles: 256
+  }
+  include: { phase: TRAIN }
+}
+layer {
   name: "x/std"
   type: "Eltwise"
   bottom: "x"
-  bottom: "1/std"
+  bottom: "std_tile"
   top: "x/std"
   eltwise_param {
     operation: PROD
@@ -196,12 +187,32 @@ layer {
   }
   include: { phase: TRAIN }
 }
-
+layer {
+	name: "entropy"
+	type: "Power"
+	bottom: "logstd"
+	top: "entropy"
+	power_param {
+		shift: 0.9189385332046727
+	}
+	include: { phase: TRAIN }
+}
+layer {
+  name: "entropy_tile"
+  type: "Tile"
+  bottom: "entropy"
+  top: "entropy_tile"
+  tile_param {
+    axis: 0
+    tiles: 256
+  }
+  include: { phase: TRAIN }
+}
 layer {
   name: "logprob_"
   type: "Eltwise"
   bottom: "(x/std)^2"
-  bottom: "logstd_tile"
+  bottom: "entropy_tile"
   top: "logprob_"
   eltwise_param {
     operation: SUM
@@ -227,9 +238,6 @@ layer {
   type: "Exp"
   bottom: "logprob"
   top: "prob"
-  exp_param {
-  	shift: -0.9189385332046727
-  }
   include: { phase: TRAIN }
 }
 layer {

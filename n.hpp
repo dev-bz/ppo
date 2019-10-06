@@ -21,7 +21,7 @@ struct Net {
 	static void CopyModel(const caffe::Net<float> &src, caffe::Net<float> &dst);
 	void makeNet(int &i, int &o, const char *net, const char *solver = nullptr);
 	void syncNet(bool train = true);
-	float trainNet();
+        float trainNet();
 	std::vector<float> &getValue(const std::vector<float> &input);
         std::vector<float> &getValue(const std::vector<float> &input,const char*second,std::vector<float> &output);
 	float getValues(const std::vector<float> &input, std::vector<float> &output, int batchSize = 1024);
@@ -31,3 +31,5 @@ struct Net {
 	std::vector<float> local_data;
 	std::vector<float> batch_data;
 };
+extern "C" void shutDownCaffe();
+extern "C" void startupCaffe();

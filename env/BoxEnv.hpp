@@ -22,6 +22,7 @@ struct Robot {
 	void Reset();
 	void Draw();
 	void SaveNet();
+        void Quit();
 	//std::vector<float> inputs;
 };
 extern "C" void setRunning(bool b);

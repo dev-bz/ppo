@@ -25,6 +25,7 @@ struct Trainer {
   //std::vector<float> state;
   std::shared_ptr<tExpTuple> tuple,_tuple;
   void initTrainer(const char *model = nullptr);
+  void shutDown();
   const std::vector<float> &preUpdate(const std::vector<float> &input);
   int postUpdate(float shape, const std::vector<float> &o_input,
                  const std::vector<float> &n_input,

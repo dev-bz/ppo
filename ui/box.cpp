@@ -5,8 +5,9 @@
 #include <string>
 #include <vector>
 //======
-//#include "../main.hpp"
+#include "../main.hpp"
 //======
+// #define TEST_PD
 static int state_scroll = 0, save_scroll = 0;
 static bool state_show = false;
 static int ctrl = 0;
@@ -195,6 +196,7 @@ float time_step = 0.0333f;
 float position[3] = {0, 0, 0};
 clock_t preTime;
 extern class b2Draw *debugDraw;
+#ifdef TEWT_PD
 bool updatePD = true;
 bool updateTar = true;
 struct BodyInterface {
@@ -204,8 +206,8 @@ struct BodyInterface {
   virtual b2Joint *GetJoint(int part) = 0;
   virtual float32 GetTarget(int part) = 0;
 };
-// void init_pd(BodyInterface *bx);
-// void update_pd(BodyInterface *bx);
+void init_pd(BodyInterface *bx);
+void update_pd(BodyInterface *bx);
 struct PDControlller {
   b2RevoluteJoint *joint = nullptr;
   float32 tar = 0.0;
@@ -213,7 +215,7 @@ struct PDControlller {
   int step = 0;
   PDControlller(b2World *w, b2Body *a, b2Body *b) {
     b2RevoluteJointDef j;
-    j.Initialize(a, b, a->GetPosition());
+    j.Initialize(a, b, 0.5f * (a->GetPosition() + b->GetPosition()));
     joint = (b2RevoluteJoint *)w->CreateJoint(&j);
     joint->EnableMotor(true);
   }
@@ -290,6 +292,7 @@ struct Body : BodyInterface {
   }
 };
 Body body;
+#endif
 void box2d_init() {
   restore[0] = "save";
   restore[1] = "runThread";
@@ -326,11 +329,11 @@ void box2d_init() {
     // def.gravityScale = 0;
     b2Filter filter;
     filter.groupIndex = -1;
-#if 0
-    box.SetAsBox(1.5f, .42f, b2Vec2(-1.5, 0.0), 0.0);
-    def.position.Set(-1.5, 12.0);
+#ifdef TEST_PD
+    box.SetAsBox(1.5f, .42f, b2Vec2(-0, 0.0), 0.0);
+    def.position.Set(-3.0, 12.0);
     auto *a = w->CreateBody(&def);
-    
+
     a->CreateFixture(&box, 1)->SetFilterData(filter);
     if (1) {
       b2RevoluteJointDef j;
@@ -338,15 +341,15 @@ void box2d_init() {
                    b2Vec2(def.position.x - 3.0, def.position.y));
       w->CreateJoint(&j);
     }
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 9; ++i) {
       def.position.x += 3.0;
       auto *b = w->CreateBody(&def);
       b->CreateFixture(&box, 1)->SetFilterData(filter);
       body.append(a, b);
       a = b;
     }
+    init_pd(&body);
 #endif
-    // init_pd(&body);
     {
       box.SetAsBox(0.5f, 1.5f, b2Vec2(0, 1.0f), 0.0f);
       def.gravityScale = 0.0;
@@ -359,7 +362,8 @@ void box2d_init() {
         /*b2RevoluteJointDef j;
         j.Initialize(m_groundBody, a, b2Vec2(def.position.x, def.position.y));
         auto b = (b2RevoluteJoint *)w->CreateJoint(&j);*/
-        robot.Init(a, "data/tmp"); /*
+        robot.Init(a, "data/tmp");
+        /*
                 robot.train = false;
                 robot.net.s = 0.1;
                 robot.maxStep = 200;*/
@@ -369,26 +373,33 @@ void box2d_init() {
 }
 void box2d_step() {
   if (running) {
+#ifdef TEST_PD
     if (updateTar)
       body.step();
     if (updatePD) {
-      // update_pd(&body);
+      update_pd(&body);
     } else
       body.updatePD();
+#endif
     w->Step(time_step, 8, 5);
     robot.Step();
   }
 }
 void box2d_quit() {
+#ifdef TEST_PD
   body.clear();
+#endif
   if (w)
     delete w;
   w = nullptr;
+  robot.Quit();
   testBox::setRunning(false);
 }
 void box2d_gravity(float x, float y) {}
 void box2d_draw() {
+#ifdef TEST_PD
   body.draw();
+#endif
   robot.Draw();
   w->DrawDebugData();
 }
@@ -447,17 +458,20 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
 }*/
 // imguiLabel("Label");
 #ifndef DEMO
-  sprintf(info, "%.4f %.4f", robot.net.tuple->scale[0],
-          robot.net.tuple->scale[1]);
+  sprintf(info, "%.4f %.4f", /*robot.net.tuple->scale[0],
+          robot.net.tuple->scale[1]*/ 0.0f,
+          0.0f);
 
   imguiSlider(info, &robot.net.exp, 0.0, 2.0, 0.001, true);
   imguiSlider("zoom", &g_camera.m_zoom, 0.25, 5.0, 0.001, true);
+#ifdef TEST_PD
   if (imguiButton(updatePD ? "mutiPD" : "Signle", true)) {
     updatePD = !updatePD;
   }
   if (imguiButton(updateTar ? "Target" : "Wait", true)) {
     updateTar = !updateTar;
   }
+#endif
 #endif
   if (imguiCollapse(statString, 0, state_show, true)) {
     if (state_show) {
