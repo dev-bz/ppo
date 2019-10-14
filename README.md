@@ -1,5 +1,6 @@
-# PPO
-### Algorithm: Proximal Policy Optimization
+# PPO and AWR
+### Algorithm 1: Proximal Policy Optimization
+### Algorithm 2: Advantage-Weighted Regression
 Write the reinforcement learning algorithm with `C++` and use `Box2D` & `Caffe`.  
 - platform: `Android`
 - tool: `CIDE3`
