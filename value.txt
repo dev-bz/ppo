@@ -6,10 +6,9 @@ layer {
   top: "input"
   top: "label"
   input_param {
-	shape: { dim: 256 dim: 1 dim: 1 dim: 5 } 
-  shape: { dim: 256 dim: 1 dim: 1 dim: 1 } 
+    shape: { dim: 256 dim: 5 } 
+    shape: { dim: 256 dim: 1 } 
   }
-
   include: { phase: TRAIN }
 }
 
@@ -18,7 +17,7 @@ layer {
   type: 'Input'
   top: 'input'
   input_param { 
-    shape: { dim: 1 dim: 1 dim: 1 dim: 5 } 
+    shape: { dim: 1 dim: 5 } 
   } 
 
   include: { phase: TEST }

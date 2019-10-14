@@ -1,29 +1,27 @@
 #pragma once
+#include "Agent.h"
 #include <Box2D/Box2D.h>
 #include <main.hpp>
 #include <stdlib.h>
 #include <string>
 #include <vector>
+#define AGENT_COUNT 12
 namespace testBox {
 struct Robot {
-	b2Body *body;
-	b2Vec2 position, target;
-	int iter, step, maxStep, keepTime;
-	int vStep;
-	Trainer net;
-	float start,shape,reward;
-	bool done, train,filp;
-	std::vector<float> input, act,real,old,states;
-	std::string model;
-	void Init(b2Body *b, const char *model = nullptr);
-	void Action();
-	int Step();
-	void Update();
-	void Reset();
-	void Draw();
-	void SaveNet();
-        void Quit();
-	//std::vector<float> inputs;
+  Agent *agents[AGENT_COUNT];
+  std::vector<std::vector<DataType>> action;
+  std::vector<std::vector<DataType>> obs;
+  int trains, train, code;
+  float32 saved;
+  Trainer net;
+
+  std::string model;
+  void Init(b2World *w, int type = 0, const char *model = nullptr);
+  void Action();
+  int Step();
+  void Draw();
+  void SaveNet();
+  void Quit();
 };
 extern "C" void setRunning(bool b);
 extern "C" void syncNetwork(int saveIter = 0);

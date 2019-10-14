@@ -6,11 +6,10 @@
 #include <stdlib.h>
 #include <string>
 #include <vector>
+
 tExpTuple::tExpTuple(int size, int state, int action) {
   states.resize(size * state, 0.0f);
-  _states.resize(size * state, 0.0f);
   actions.resize(size * action, 0.0f);
-  scale.resize(action, 0.0f);
   rewards.resize(size, 0.0f);
   returns.resize(size, 0.0f);
   values.resize(size, 0.0f);
@@ -18,22 +17,22 @@ tExpTuple::tExpTuple(int size, int state, int action) {
   adv.resize(size, 0.0f);
   maxStep = size;
   position = 0;
-  // dones[maxStep] = true;
+  scale = 1;
   for (auto &i : states)
     i = drand48() - 0.5;
-  obs = states;
-  // for (auto &i : returns) i = drand48();
 }
-void Trainer::initTrainer(const char *model) {
+void Trainer::initTrainer(int s, int a, int type) {
   startupCaffe();
-  value.makeNet(inputSize, outputSize, "value.txt", "solver_value.txt");
-  v_label.resize(outputSize, 0.25);
-  net.makeNet(inputSize, outputSize, "ppo.txt", "solver.txt");
-  printf("%d,%d\n", inputSize, outputSize);
-  label.resize(outputSize, 0.25);
-  // w.resize(256 * outputSize, 0.0);
-  tuple.reset(new tExpTuple(256, inputSize, outputSize));
-  _tuple.reset(new tExpTuple(256, inputSize, outputSize));
+  this->type = type;
+  value.makeNet(s, 1, "solver_value.txt");
+  inputSize = s;
+  outputSize = a;
+  if (type)
+    net.makeNet(s, a, "solver_awr.txt");
+  else
+    net.makeNet(s, a, "solver_ppo.txt");
+}
+void Trainer::load(const char *model) {
   if (model) {
     net.Load(std::string(model) + std::string("_actor.bin"));
     value.Load(std::string(model) + std::string("_critic.bin"));
@@ -57,8 +56,7 @@ void Trainer::initTrainer(const char *model) {
 const std::vector<float> &Trainer::preUpdate(const std::vector<float> &input) {
   // s = shape;
   // state = input;
-  auto &act = net.getValue(input, "std", tuple->scale);
-  auto &scale = tuple->scale;
+  auto &act = net.getValue(input, "std", scale);
   int cnt = scale.size();
   if (act.size() == cnt) {
     for (int j = 0; j < cnt; ++j) {
@@ -77,25 +75,23 @@ float NormalProb(float scale, float x) {
   return expf(-0.5 * sx * sx - 0.5 * logf(M_PI + M_PI) - logf(scale));
 }
 float NormalTD(float scale, float x) {
-  // return -x * expf(-0.5 * x * x - 0.5 * logf(M_PI + M_PI) - logf(scale));
   return (-sqrtf(0.5 * M_1_PI) * x * expf(-0.5 * x * x)) /
          (scale * scale * scale);
 }
-/*float NormalPosition(float scale, float p) {
-        return scale * sqrtf(-2.0f * logf(p) - logf(2.0f * M_PI) - 2.0f *
-logf(scale));
-}*/
 extern "C" float getReward(const float *target, const float *at, float *state,
                            float *_state);
-int Trainer::postUpdate(float shape, const std::vector<float> &o_input,
+int Trainer::postUpdate(int id, float shape, const std::vector<float> &o_input,
                         const std::vector<float> &n_input,
                         const std::vector<float> &act, bool done,
                         const std::vector<float> &real) {
   // auto o = value.getValue(state)[0];
   // exp = cMathUtil::EvalGaussian(0, 1.0, 0.0);
+  while (tuples.size() <= id)
+    tuples.push_back(
+        std::shared_ptr<tExpTuple>(new tExpTuple(256, inputSize, outputSize)));
+  auto tuple = tuples[id];
   for (int i = 0; i < inputSize; ++i) {
     tuple->states[i + tuple->position * inputSize] = o_input[i];
-    tuple->_states[i + tuple->position * inputSize] = n_input[i];
   }
   if (real.size() * tuple->maxStep != tuple->world.size()) {
     tuple->world.resize(real.size() * tuple->maxStep);
@@ -135,53 +131,71 @@ int Trainer::postUpdate(float shape, const std::vector<float> &o_input,
                                 tuple->_states.data() + t * inputSize);
       }
     }*/
-    tuple->obs = tuple->states;
-    this->value.getValues(tuple->obs, value, 256);
+    this->value.getValues(tuple->states, value, 256);
     auto nv = this->value.getValue(n_input)[0];
-    // this->value.getValues(tuple->_states, _value, 256);
-    // this->net.getValues(tuple->obs, tuple->logp, 256);
     const float gamma = 0.975;
     const float lam = 0.935;
     float lastgaelam = 0.0f;
     float total = 0.0;
     float stddev = 0.0;
-
     for (int t, i = tuple->maxStep; i > 0; --i) {
       t = (i + tuple->position - 1) % tuple->maxStep;
       float nonterminal = done[t] ? 0.0f : 1.0f;
-      // v = reward[t] + gamma * v * nonterminal;
-      // float delta = v - value[t];
-      float delta = reward[t] + gamma * nv * nonterminal - value[t];
-      gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam;
-      ret[t] = gaelam[t] + value[t];
+      ret[t] = reward[t] + gamma * nonterminal * (nv + lam * lastgaelam);
+      gaelam[t] = lastgaelam = ret[t] - (nv = value[t]);
       total += gaelam[t];
-      nv = value[t];
     }
     total /= tuple->maxStep;
-    // if (total > 0) total = 0;
-    for (int t = tuple->maxStep - 1; t >= 0; --t) {
-      gaelam[t] -= total;
-      stddev += gaelam[t] * gaelam[t];
+    for (auto &gae : gaelam) {
+      gae -= total;
+      stddev += gae * gae;
     }
     stddev = sqrtf(stddev / tuple->maxStep) + 0.001f;
-    for (int t = tuple->maxStep - 1; t >= 0; --t) {
-      gaelam[t] /= stddev;
+    for (auto &gae : gaelam) {
+      gae /= stddev;
     }
-    this->value.LoadTrainData(tuple->obs, tuple->returns, std::vector<float>());
-    net.LoadTrainData(tuple->obs, tuple->actions, gaelam);
-    /*std::vector<float> param(4);
-    param[0] = s;
-    param[1] = 0;
-    param[2] = 0.8;
-    param[3] = 1.2;*/
-    net.SetTrainParam("logprob", "logoldprob");
-    for (int i = 0; i < 30; ++i) {
-      this->value.trainNet();
-      exp = this->net.trainNet();
+    this->value.LoadTrainData(tuple->states, tuple->returns,
+                              std::vector<float>());
+    exp = this->value.trainNet(10);
+    this->value.getValues(tuple->states, value, 256);
+    if (type == 1) {
+      nv = this->value.getValue(n_input)[0];
+      lastgaelam = 0.0f;
+      total = 0.0;
+
+      for (int t, i = tuple->maxStep; i > 0; --i) {
+        t = (i + tuple->position - 1) % tuple->maxStep;
+        float nonterminal = done[t] ? 0.0f : 1.0f;
+        ret[t] = reward[t] + gamma * nonterminal * (nv + lam * lastgaelam);
+        gaelam[t] = lastgaelam = ret[t] - (nv = value[t]);
+        total += gaelam[t];
+      }
+      if (id == 0) {
+        /*float total_ret = 0.0;
+        for (auto &r : ret)
+          total_ret += r;
+        total_ret /= tuple->maxStep;*/
+        stddev = 0.0;
+        for (auto &r : ret)
+          stddev += powf(r, 2.0);
+        stddev = sqrtf(stddev / tuple->maxStep) + 0.001f;
+        tuple->scale = 1.0 / stddev;
+      }
+      total /= tuple->maxStep;
+      stddev = 0.0;
+      for (auto &gae : gaelam) {
+        gae -= total;
+        stddev += gae * gae;
+      }
+      stddev = sqrtf(stddev / tuple->maxStep) + 0.001f;
+      for (auto &gae : gaelam) {
+        gae /= stddev;
+      }
     }
-    this->value.syncNet();
-    this->net.syncNet();
-    this->value.getValues(tuple->obs, value, 256);
+    net.LoadTrainData(tuple->states, tuple->actions, gaelam);
+    if (type == 0)
+      net.SetTrainParam("logprob", "logoldprob");
+    this->net.trainNet(10);
     return 1;
   }
   // s = s - shape;
@@ -193,6 +207,4 @@ void Trainer::save(const char *model) {
     value.Save(std::string(model) + std::string("_critic.bin"));
   }
 }
-void Trainer::shutDown() {
-  shutDownCaffe();
-}
+void Trainer::shutDown() { shutDownCaffe(); }

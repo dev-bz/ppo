@@ -1,4 +1,4 @@
-name: "PPONet"
+name: "AWRNet"
 
 layer { 
   name: 'input' 
@@ -6,11 +6,9 @@ layer {
   top: "input"
   top: "label"
   top: "adv"
-  top: "logoldprob"
   input_param {
     shape: { dim: 256 dim: 5 } 
-    shape: { dim: 256 dim: 3 }
-    shape: { dim: 256}
+    shape: { dim: 256 dim: 2 }
     shape: { dim: 256}
   }
   include: { phase: TRAIN }
@@ -72,7 +70,7 @@ layer {
 	decay_mult: 0
   }
   inner_product_param {
-    num_output: 128
+    num_output: 64
     weight_filler {
       type: "xavier"
     }
@@ -103,7 +101,7 @@ layer {
     decay_mult: 0
   }
   inner_product_param {
-    num_output: 3
+    num_output: 2
     weight_filler {
       type: "xavier"
     }
@@ -121,7 +119,7 @@ layer {
     lr_mult: 1
   }
   parameter_param {
-    shape: { dim: 1 dim: 3 } 
+    shape: { dim: 1 dim: 2 } 
   }
 }
 
@@ -241,48 +239,17 @@ layer {
   include: { phase: TRAIN }
 }
 layer {
-  name: "logratio"
-  type: "Eltwise"
-  bottom: "logprob"
-  bottom: "logoldprob"
-  top: "logratio"
-  eltwise_param {
-    operation: SUM
-    coeff: 1.0
-    coeff: -1.0
-  }
-  include: { phase: TRAIN }
-}
-layer {
-  name: "ratio"
-  type: "Exp"
-  bottom: "logratio"
-  top: "ratio"
-  include: { phase: TRAIN }
-}
-layer {
-  name: "clip_ratio"
-  type: "Clip"
-  bottom: "ratio"
-  top: "clip_ratio"
-  clip_param {
-    min: 0.8
-    max: 1.2
-  }
-  include: { phase: TRAIN }
-}
-layer {
-  name: "ee_adv"
+  name: "adv_weight"
   type: "Exp"
   bottom: "adv"
-  top: "ee_adv"
+  top: "adv_weight"
   include: { phase: TRAIN }
 }
 layer {
-  name: "e_adv"
+  name: "cliped"
   type: "Clip"
-  bottom: "adv"
-  top: "e_adv"
+  bottom: "adv_weight"
+  top: "cliped"
   clip_param {
   	max: 20
   	min: 0
@@ -290,60 +257,44 @@ layer {
   include: { phase: TRAIN }
 }
 layer {
-  name: "-adv"
-  type: "Power"
-  bottom: "e_adv"
-  top: "-adv"
-  power_param {
-    scale: -1.0
-  }
-  include: { phase: TRAIN }
-}
-
-layer {
-  name: "-ratio*adv"
+  name: "aLoss"
   type: "Eltwise"
-  bottom: "ratio"
-  bottom: "-adv"
-  top: "-ratio*adv"
+  bottom: "logprob"
+  bottom: "cliped"
+  top: "aLoss"
   eltwise_param {
     operation: PROD
   }
   include: { phase: TRAIN }
 }
 layer {
-  name: "-clip_ratio*adv"
-  type: "Eltwise"
-  bottom: "clip_ratio"
-  bottom: "-adv"
-  top: "-clip_ratio*adv"
-  eltwise_param {
-    operation: PROD
-  }
-  include: { phase: TRAIN }
-}
-
-layer {
-  name: "max_ratio"
-  type: "Eltwise"
-  bottom: "-clip_ratio*adv"
-  bottom: "-ratio*adv"
-  top: "max_ratio"
-  eltwise_param {
-    operation: MAX
-  }
-  include: { phase: TRAIN }
-}
-
-layer {
-  name: "o_pseudoloss"
+  name: "awr_loss"
   type: "Reduction"
-  bottom: "max_ratio"
-  top: "o_pseudoloss"
-  loss_weight: 1.0
+  bottom: "aLoss"
+  top: "awr_loss"
+  loss_weight: -1.0
   reduction_param{
        axis: 0
        operation: MEAN
   }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "cliped_output"
+  type: "Clip"
+  bottom: "output"
+  top: "cliped_output"
+  clip_param {
+  	max: 1.5
+  	min: -1.5
+  }
+  include: { phase: TRAIN }
+}
+layer {
+  name: "actLoss"
+  type: "EuclideanLoss"
+  bottom: "output"
+  bottom: "cliped_output"
+  top: "actLoss"
   include: { phase: TRAIN }
 }

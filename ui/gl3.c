@@ -8,11 +8,11 @@
 #include <errno.h>
 #include <jni.h>
 #include <math.h>
-#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "native-activity", __VA_ARGS__))
-#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "native-activity", __VA_ARGS__))
-void glPrintf(const char *fmt, const char *err) {
-  LOGW(fmt, err);
-}
+#define LOGI(...)                                                              \
+  ((void)__android_log_print(ANDROID_LOG_INFO, "native-activity", __VA_ARGS__))
+#define LOGW(...)                                                              \
+  ((void)__android_log_print(ANDROID_LOG_WARN, "native-activity", __VA_ARGS__))
+void glPrintf(const char *fmt, const char *err) { LOGW(fmt, err); }
 /**
  * Our saved state data.
  */
@@ -62,7 +62,8 @@ static void __gluMakeIdentityf(GLfloat m[16]) {
 }
 void MatrixMul2(float *out, float *p, float *s);
 #define __glPi 3.14159265358979323846
-void gluPerspectivef(GLfloat *m, GLfloat fovy, GLfloat aspect, GLfloat zNear, GLfloat zFar) {
+void gluPerspectivef(GLfloat *m, GLfloat fovy, GLfloat aspect, GLfloat zNear,
+                     GLfloat zFar) {
   // GLfloat m[];
   GLfloat sine, cotangent, deltaZ;
   GLfloat radians = (GLfloat)(fovy / 2.0f * __glPi / 180.0f);
@@ -83,7 +84,8 @@ void gluPerspectivef(GLfloat *m, GLfloat fovy, GLfloat aspect, GLfloat zNear, GL
 }
 void glInitMatrix(float *out) {
   out[0] = out[5] = out[10] = out[15] = 1;
-  out[1] = out[2] = out[3] = out[4] = out[6] = out[7] = out[8] = out[9] = out[11] = out[12] = out[13] = out[14] = 0;
+  out[1] = out[2] = out[3] = out[4] = out[6] = out[7] = out[8] = out[9] =
+      out[11] = out[12] = out[13] = out[14] = 0;
 }
 void rotYMatrixx(float *out, float r) {
   out[0] = cosf(r);
@@ -161,7 +163,12 @@ static int engine_init_display(struct engine *engine) {
    * Below, we select an EGLConfig with at least 8 bits per color
    * component compatible with on-screen windows
    */
-  const EGLint attribs[] = {EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_RED_SIZE, 8, EGL_DEPTH_SIZE, 8, EGL_NONE};
+  const EGLint attribs[] = {EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                            EGL_BLUE_SIZE,    8,
+                            EGL_GREEN_SIZE,   8,
+                            EGL_RED_SIZE,     8,
+                            EGL_DEPTH_SIZE,   8,
+                            EGL_NONE};
   EGLint w, h, dummy, format;
   EGLint numConfigs;
   EGLConfig config;
@@ -198,7 +205,7 @@ static int engine_init_display(struct engine *engine) {
   glClearColor(0.3f, 0.4f, 0.5f, 1.f);
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_BLEND);
-  glDepthFunc(GL_LEQUAL);
+  glDepthFunc(GL_LESS);
   glClearDepthf(1.0f);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glViewport(0, 0, w, h);
@@ -220,7 +227,9 @@ static void engine_draw_frame(struct engine *engine) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 #ifdef BOX2D
   if (show_ui)
-    box2d_ui(engine->width, engine->height, engine->state.x, engine->state.y, engine->state.z, 0);
+    box2d_ui(engine->width, engine->height, engine->state.x, engine->state.y,
+             engine->state.z, 0);
+
   box2d_draw();
   void debugFlush();
   debugFlush();
@@ -235,7 +244,8 @@ static void engine_term_display(struct engine *engine) {
   void debugDestroy();
   debugDestroy();
   if (engine->display != EGL_NO_DISPLAY) {
-    eglMakeCurrent(engine->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglMakeCurrent(engine->display, EGL_NO_SURFACE, EGL_NO_SURFACE,
+                   EGL_NO_CONTEXT);
     if (engine->context != EGL_NO_CONTEXT) {
       eglDestroyContext(engine->display, engine->context);
     }
@@ -252,7 +262,8 @@ static void engine_term_display(struct engine *engine) {
 /**
  * Process the next input event.
  */
-static int32_t engine_handle_input(struct android_app *app, AInputEvent *event) {
+static int32_t engine_handle_input(struct android_app *app,
+                                   AInputEvent *event) {
   struct engine *engine = (struct engine *)app->userData;
   if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
     engine->animating = 1;
@@ -304,16 +315,20 @@ static void engine_handle_cmd(struct android_app *app, int32_t cmd) {
   case APP_CMD_GAINED_FOCUS:
     // When our app gains focus, we start monitoring the accelerometer.
     if (engine->accelerometerSensor != NULL) {
-      ASensorEventQueue_enableSensor(engine->sensorEventQueue, engine->accelerometerSensor);
+      ASensorEventQueue_enableSensor(engine->sensorEventQueue,
+                                     engine->accelerometerSensor);
       // We'd like to get 60 events per second (in us).
-      ASensorEventQueue_setEventRate(engine->sensorEventQueue, engine->accelerometerSensor, (1000L / 60) * 1000);
+      ASensorEventQueue_setEventRate(engine->sensorEventQueue,
+                                     engine->accelerometerSensor,
+                                     (1000L / 60) * 1000);
     }
     break;
   case APP_CMD_LOST_FOCUS:
     // When our app loses focus, we stop monitoring the accelerometer.
     // This is to avoid consuming battery while not being used.
     if (engine->accelerometerSensor != NULL) {
-      ASensorEventQueue_disableSensor(engine->sensorEventQueue, engine->accelerometerSensor);
+      ASensorEventQueue_disableSensor(engine->sensorEventQueue,
+                                      engine->accelerometerSensor);
     }
     // Also stop animating.
     engine->animating = 0;
@@ -338,8 +353,10 @@ void android_main(struct android_app *state) {
   // Prepare to monitor accelerometer
   if (0) {
     engine.sensorManager = ASensorManager_getInstance();
-    engine.accelerometerSensor = ASensorManager_getDefaultSensor(engine.sensorManager, 15);
-    engine.sensorEventQueue = ASensorManager_createEventQueue(engine.sensorManager, state->looper, LOOPER_ID_USER, NULL, NULL);
+    engine.accelerometerSensor =
+        ASensorManager_getDefaultSensor(engine.sensorManager, 15);
+    engine.sensorEventQueue = ASensorManager_createEventQueue(
+        engine.sensorManager, state->looper, LOOPER_ID_USER, NULL, NULL);
   }
   if (state->savedState != NULL) {
     // We are starting with a previous saved state; restore from it.
@@ -360,7 +377,8 @@ void android_main(struct android_app *state) {
     // If not animating, we will block forever waiting for events.
     // If animating, we loop until all events are read, then continue
     // to draw the next frame of animation.
-    while ((ident = ALooper_pollAll(engine.animating ? 0 : -1, NULL, &events, (void **)&source)) >= 0) {
+    while ((ident = ALooper_pollAll(engine.animating ? 0 : -1, NULL, &events,
+                                    (void **)&source)) >= 0) {
       // Process this event.
       if (source != NULL) {
         source->process(state, source);
@@ -369,7 +387,8 @@ void android_main(struct android_app *state) {
       if (ident == LOOPER_ID_USER) {
         if (engine.accelerometerSensor != NULL) {
           ASensorEvent event;
-          while (ASensorEventQueue_getEvents(engine.sensorEventQueue, &event, 1) > 0) {
+          while (ASensorEventQueue_getEvents(engine.sensorEventQueue, &event,
+                                             1) > 0) {
 #ifdef BOX2D
             box2d_gravity(event.acceleration.x, event.acceleration.y);
 #endif

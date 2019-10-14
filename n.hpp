@@ -8,7 +8,7 @@ template <typename Dtype> class Blob;
 } // namespace caffe
 struct Net {
 	std::shared_ptr<caffe::Net<float>> local;
-	std::shared_ptr<caffe::Net<float>> batch, n256;
+	std::shared_ptr<caffe::Net<float>> batch;
 	std::shared_ptr<caffe::Net<float>> tlocal;
 	std::shared_ptr<caffe::Solver<float>> slocal;
 	int GetBatchSize();
@@ -16,12 +16,12 @@ struct Net {
 	void SetTrainParam(const std::vector<float> &param);
         void SetTrainParam(const char *from, const char *to);
 	float GetTrainResult();
-	static void CopyParams(const std::vector<caffe::Blob<float> *> &src_params,
+	static int CopyParams(const std::vector<caffe::Blob<float> *> &src_params,
 												 const std::vector<caffe::Blob<float> *> &dst_params);
-	static void CopyModel(const caffe::Net<float> &src, caffe::Net<float> &dst);
-	void makeNet(int &i, int &o, const char *net, const char *solver = nullptr);
+	static int CopyModel(const caffe::Net<float> &src, caffe::Net<float> &dst);
+	void makeNet(int i, int o, const char *file, bool solver = true);
 	void syncNet(bool train = true);
-        float trainNet();
+        float trainNet(int iters);
 	std::vector<float> &getValue(const std::vector<float> &input);
         std::vector<float> &getValue(const std::vector<float> &input,const char*second,std::vector<float> &output);
 	float getValues(const std::vector<float> &input, std::vector<float> &output, int batchSize = 1024);

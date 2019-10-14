@@ -1,15 +1,18 @@
 #include "n.hpp"
+#include <android/log.h>
 #include <caffe/caffe.hpp>
 #include <caffe/net.hpp>
 #include <caffe/sgd_solvers.hpp>
-/*std::shared_ptr<caffe::Net<float>> local;
-std::shared_ptr<caffe::Net<float>> tlocal;
-std::shared_ptr<caffe::Solver<float>> slocal;*/
+#define LOGI(...)                                                              \
+  ((void)__android_log_print(ANDROID_LOG_INFO, "native-activity", __VA_ARGS__))
+#define LOGW(...)                                                              \
+  ((void)__android_log_print(ANDROID_LOG_WARN, "native-activity", __VA_ARGS__))
+
 void InitCaffe(char **argv);
 int Net::GetBatchSize() {
   int batch_size = 0;
   {
-    const auto &input_blobs = slocal->net()->input_blobs();
+    const auto &input_blobs = tlocal->input_blobs();
     const auto &input_blob = input_blobs[0];
     batch_size = input_blob->shape(0);
   }
@@ -90,33 +93,45 @@ void Net::LoadTrainData(const std::vector<float> &X,
     }
   }
 }
-void Net::CopyParams(const std::vector<caffe::Blob<float> *> &src_params,
-                     const std::vector<caffe::Blob<float> *> &dst_params) {
+int Net::CopyParams(const std::vector<caffe::Blob<float> *> &src_params,
+                    const std::vector<caffe::Blob<float> *> &dst_params) {
   int num_blobs = static_cast<int>(src_params.size());
+  int dst_blob_count_blobs = static_cast<int>(dst_params.size());
+  if (num_blobs != dst_blob_count_blobs)
+    return 1;
+  int bad = 0;
   for (int b = 0; b < num_blobs; ++b) {
     auto src_blob = src_params[b];
     auto dst_blob = dst_params[b];
     int src_blob_count = src_blob->count();
     int dst_blob_count = dst_blob->count();
-    assert(src_blob_count == dst_blob_count);
-    dst_blob->CopyFrom(*src_blob);
+    if (src_blob_count != dst_blob_count) {
+      LOGI("[%s %s]", src_blob->shape_string().c_str(),
+           dst_blob->shape_string().c_str());
+      bad = 2;
+    }
   }
+  if (bad == 0)
+    for (int b = 0; b < num_blobs; ++b) {
+      auto src_blob = src_params[b];
+      auto dst_blob = dst_params[b];
+      dst_blob->CopyFrom(*src_blob);
+    }
+  return bad;
 }
-void Net::CopyModel(const caffe::Net<float> &src, caffe::Net<float> &dst) {
+int Net::CopyModel(const caffe::Net<float> &src, caffe::Net<float> &dst) {
   const auto &src_params = src.learnable_params();
   const auto &dst_params = dst.learnable_params();
-  CopyParams(src_params, dst_params);
+  return CopyParams(src_params, dst_params);
 }
 void Net::syncNet(bool train) {
   if (tlocal != nullptr) {
     if (train) {
       CopyModel(*tlocal.get(), *local.get());
       CopyModel(*tlocal.get(), *batch.get());
-      CopyModel(*tlocal.get(), *n256.get());
     } else {
       CopyModel(*local.get(), *tlocal.get());
       CopyModel(*local.get(), *batch.get());
-      CopyModel(*local.get(), *n256.get());
     }
   }
 }
@@ -125,21 +140,58 @@ static int init = 0;
 void startupCaffe() {
   if (init == 0) {
     char *argv[1] = {proc};
-    //InitCaffe(argv);
+    // InitCaffe(argv);
   }
   ++init;
 }
 void shutDownCaffe() {
-  //if (init == 1) google::ShutdownGoogleLogging();
+  // if (init == 1) google::ShutdownGoogleLogging();
   if (init > 0)
     --init;
 }
-void Net::makeNet(int &i, int &o, const char *net, const char *solver) {
+void resizeNetParam(caffe::NetParameter *n, int i, int o) {
+  for (int id = 0; id < n->layer_size(); ++id) {
+    auto layer = n->mutable_layer(id);
+    if (layer->name() == "input") {
+      if (layer->has_input_param()) {
+        auto m = layer->mutable_input_param();
+        if (i > 0 && m->shape_size() > 0)
+          if (i != m->shape(0).dim(1))
+            m->mutable_shape(0)->set_dim(1, i);
+        if (o > 0 && m->shape_size() > 1)
+          if (o != m->shape(1).dim(1))
+            m->mutable_shape(1)->set_dim(1, o);
+      }
+    } else if (o > 0) {
+      if (layer->name() == "output") {
+        if (layer->has_inner_product_param())
+          if (o != layer->inner_product_param().num_output())
+            layer->mutable_inner_product_param()->set_num_output(o);
+      } else if (layer->name() == "logstd") {
+        auto m = layer->mutable_parameter_param();
+        if (m->has_shape()) {
+          if (o != m->shape().dim(1))
+            m->mutable_shape()->set_dim(1, o);
+        }
+      }
+    }
+  }
+}
+void Net::makeNet(int i, int o, const char *file, bool solver) {
   const char *SolverType;
-  caffe::NetParameter p;
+  caffe::NetParameter net_param;
   caffe::SolverParameter param;
   if (solver) {
-    caffe::ReadProtoFromTextFileOrDie(solver, &param);
+    caffe::ReadProtoFromTextFileOrDie(file, &param);
+    file = nullptr;
+    {
+      auto n = param.mutable_net_param();
+      if (param.has_net())
+        caffe::ReadProtoFromTextFileOrDie(param.net(), n);
+      resizeNetParam(n, i, o);
+      net_param.CopyFrom(*n);
+      param.clear_net();
+    }
     caffe::SolverParameter_SolverType type = param.solver_type();
     SolverType = param.type().c_str();
     if (strcmp("SGD", SolverType) == 0) {
@@ -186,25 +238,34 @@ void Net::makeNet(int &i, int &o, const char *net, const char *solver) {
       for (int j = 0; j < ct; ++j)
         td[j] = 1.0;
     }
-    if (net == nullptr)
-      net = param.net().c_str();
-  }
-  if (net) {
-    local.reset(new caffe::Net<float>(net, caffe::TEST));
-    {
-      batch.reset(new caffe::Net<float>(net, caffe::TEST));
-      auto &blob = batch->blob_by_name("input");
-      blob->Reshape(32 * 32, blob->channels(), blob->height(), blob->width());
+    // slocal->Restore("ppo_iter_190.solverstate");
+    SolverType = slocal->type();
+    if (slocal->test_nets().size() > 0) {
+      local = slocal->test_nets()[0];
     }
-    {
-      n256.reset(new caffe::Net<float>(net, caffe::TEST));
-      auto &blob = n256->blob_by_name("input");
-      blob->Reshape(256, blob->channels(), blob->height(), blob->width());
+    if (slocal->test_nets().size() > 1) {
+      batch = slocal->test_nets()[1];
     }
+  } else {
+    caffe::ReadProtoFromTextFileOrDie(file, &net_param);
+    // resizeNetParam(&net_param, i, o);
+    file = nullptr;
   }
-  SolverType = slocal->type();
-  i = local->blob_by_name("input")->count();
-  o = local->blob_by_name("output")->count();
+  net_param.mutable_state()->set_phase(caffe::TEST);
+  if (local == nullptr) {
+    local.reset(new caffe::Net<float>(net_param));
+    local->ShareTrainedLayersWith(tlocal.get());
+  }
+  if (batch == nullptr) {
+    batch.reset(new caffe::Net<float>(net_param));
+    auto &blob = batch->blob_by_name("input");
+    auto shape = blob->shape();
+    shape[0] = 256;
+    blob->Reshape(shape);
+    batch->ShareTrainedLayersWith(tlocal.get());
+  }
+  /*i = local->blob_by_name("input")->count();
+  o = local->blob_by_name("output")->count();*/
 }
 
 std::vector<float> &Net::getValue(const std::vector<float> &input,
@@ -273,11 +334,23 @@ std::vector<float> &Net::getValue(const std::vector<float> &input) {
 }
 float Net::getValues(const std::vector<float> &input,
                      std::vector<float> &output, int batchSize) {
-  auto nt = batchSize == 1024 ? batch.get() : n256.get();
-  auto &b = nt->input_blobs();
+
+  {
+    const auto &input_blobs = batch->input_blobs();
+    int batch_size = input_blobs[0]->shape(0);
+    if (batch_size != batchSize) {
+      for (auto blob : input_blobs) {
+        auto shape = blob->shape();
+        shape[0] = batchSize;
+        blob->Reshape(shape);
+      }
+      batch->ShareTrainedLayersWith(tlocal.get());
+    }
+  }
+  auto &b = batch->input_blobs();
   // for (int v = 0; v < ct; ++v)
   float loss = 0;
-  {
+  if (input.size() > 0) {
     auto dt = input.data();
     int ix = 0;
     for (auto &i : b) {
@@ -287,8 +360,8 @@ float Net::getValues(const std::vector<float> &input,
         td[j] = dt[ix++];
       }
     }
-    nt->Forward(&loss);
-    auto &o = nt->output_blobs();
+    batch->Forward(&loss);
+    auto &o = batch->output_blobs();
     ix = 0;
     for (auto &i : o) {
       auto cnt = i->count();
@@ -302,12 +375,11 @@ float Net::getValues(const std::vector<float> &input,
   }
   return loss;
 }
-float Net::trainNet(
-    /*const std::vector<float> &input, const std::vector<float> &target, const std::vector<float> &w*/) {
+float Net::trainNet(int iters) {
   // LoadTrainData(input, target, w);
   float loss = 0;
   // for (int e = 0; e < 100; ++e) {
-  slocal->Step(1);
+  slocal->Step(iters);
   // CopyModel(*tlocal.get(), *local.get());
   auto &o = tlocal->output_blobs();
   int cnt = 0;

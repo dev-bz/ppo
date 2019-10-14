@@ -16,6 +16,7 @@ static int running = 1;
 static int subStep = 1;
 bool inv_motor = false;
 bool over = false;
+unsigned int saved = 0;
 b2Vec2 point(0, 0), old(0, 0);
 bool down = false;
 char statString[128] = "null";
@@ -26,24 +27,9 @@ struct Robot : public testBox::Robot {
 };
 Robot robot;
 void Robot::Draw() {
-  auto c = body->GetPosition();
-
-  /*{
-    auto e = b2MulT(body->GetTransform(), target);
-    g_debugDraw.DrawSegment(c, e, b2Color(1, 0.75, 0.5, 1));
-  }*/
-  c = body->GetWorldPoint(b2Vec2(0, 2.0));
-  g_debugDraw.DrawCircle(c, 0.25f, b2Color(1.0f, 1.0f, 0.2f));
-  b2Rot r(act[0] * 0.5f);
-  auto d = body->GetWorldVector(0.5f * r.GetYAxis());
-  g_debugDraw.DrawSegment(c + d, c - d, b2Color(1, 1, 1, 1));
-  d = body->GetWorldPoint(b2Vec2(0.0, 1.6 + act[1]));
-  g_debugDraw.DrawSegment(c, d, b2Color(1, 1, 1, 1));
-
-  g_debugDraw.DrawSegment(c, target, b2Color(1, 0.75, 1, 1));
-  c = body->GetWorldPoint(b2Vec2(0.6, -1.6));
-  d = body->GetWorldPoint(b2Vec2(0.6, -1.6 + shape));
-  g_debugDraw.DrawSegment(c, d, b2Color(1, 0.5, 1, 1));
+  for (int i = 0; i < AGENT_COUNT; ++i) {
+    agents[i]->display();
+  }
   /*inputs[0] = b2_pi - body->GetAngle();
   while (inputs[0] > b2_pi) inputs[0] -= b2_pi * 2;
   while (inputs[0] < -b2_pi) inputs[0] += b2_pi * 2;
@@ -88,33 +74,33 @@ void Robot::Draw() {
   float ty = 16 - (c.y * 15.5);
   g_debugDraw.DrawCircle(0.25 * b2Vec2(tx - 31.5, 15.5 - ty), 0.075,
                          b2Color(1, 1, 1));*/
-  const std::vector<float> &vals = net.tuple->values;
-  for (int i = 0; i < 256; ++i) {
-    g_debugDraw.DrawSegment(b2Vec2(-4, i * 0.1 + 4.5),
-                            b2Vec2(vals[i] * 0.5 - 4, i * 0.1 + 4.5),
-                            b2Color(0.25, 1, 0.25));
-    g_debugDraw.DrawSegment(
-        b2Vec2(-5.5, i * 0.1 + 4.5),
-        b2Vec2(net.tuple->rewards[i] * 0.75 - 5.5, i * 0.1 + 4.5),
-        net.tuple->dones[i] ? b2Color(0.85, 0.85, 1) : b2Color(1, 0.5, 1));
-
-    g_debugDraw.DrawSegment(
-        b2Vec2(-7, i * 0.1 + 4.5),
-        b2Vec2(net.tuple->returns[i] * 0.5 - 7, i * 0.1 + 4.5),
-        b2Color(1, 0.25, 0.25));
-    g_debugDraw.DrawSegment(
-        b2Vec2(-8.5, i * 0.1 + 4.5),
-        b2Vec2(net.tuple->adv[i] * 0.25 - 8.5, i * 0.1 + 4.5),
-        b2Color(1, 1, 1));
-    g_debugDraw.DrawSegment(b2Vec2(net.tuple->states[net.inputSize * i + 0],
-                                   net.tuple->states[net.inputSize * i + 1]),
-                            b2Vec2(net.tuple->_states[net.inputSize * i + 0],
-                                   net.tuple->_states[net.inputSize * i + 1]),
-                            b2Color(0.5, 0.75, 1.0));
-  }
-  g_debugDraw.DrawSegment(b2Vec2(-7, +4.5),
-                          b2Vec2(-7, net.tuple->position * 0.1 + 4.5),
-                          b2Color(1, 1, 1));
+  if (net.tuples.size() > 0) {
+    auto net_tuple = net.tuples[0];
+    const std::vector<float> &vals = net_tuple->values;
+    for (int i = 0; i < 256; ++i) {
+      g_debugDraw.DrawSegment(
+          b2Vec2(-4, i * 0.1 + 4.5),
+          b2Vec2(vals[i] * net_tuple->scale - 4, i * 0.1 + 4.5),
+          b2Color(0.25, 1, 0.25));
+      g_debugDraw.DrawSegment(
+          b2Vec2(-7, i * 0.1 + 4.5),
+          b2Vec2(net_tuple->returns[i] * net_tuple->scale - 7, i * 0.1 + 4.5),
+          b2Color(1, 0.25, 0.25));
+      g_debugDraw.DrawSegment(
+          b2Vec2(-5.5, i * 0.1 + 4.5),
+          b2Vec2(net_tuple->rewards[i] * 0.75 - 5.5, i * 0.1 + 4.5),
+          net_tuple->dones[i] ? b2Color(0.85, 0.85, 1) : b2Color(1, 0.5, 1));
+      g_debugDraw.DrawSegment(
+          b2Vec2(-8.5, i * 0.1 + 4.5),
+          b2Vec2(net_tuple->adv[i] * 0.25 - 8.5, i * 0.1 + 4.5),
+          b2Color(1, 1, 1));
+    }
+    g_debugDraw.DrawSegment(b2Vec2(-7, +4.5),
+                            b2Vec2(-7, net_tuple->position * 0.1 + 4.5),
+                            b2Color(1, 1, 1));
+  } /* else {
+     g_debugDraw.DrawString(16, 32, "Waiting...");
+   }*/
   // g_debugDraw.DrawCircle(body->GetPosition() + 4.0 * target, 0.5, b2Color(1,
   // 1, 1, 1));
 }
@@ -167,6 +153,7 @@ void MouseDown(const b2Vec2 &p) {
     md.maxForce = 1000.0f * body->GetMass();
     m_mouseJoint = (b2MouseJoint *)w->CreateJoint(&md);
     body->SetAwake(true);
+    robot.train = 0;
   } else {
     old = p;
     down = true;
@@ -176,6 +163,7 @@ void MouseUp(const b2Vec2 &p) {
   if (m_mouseJoint) {
     w->DestroyJoint(m_mouseJoint);
     m_mouseJoint = NULL;
+    robot.train = 1;
   }
   down = false;
 }
@@ -192,7 +180,7 @@ void MouseMove(const b2Vec2 &p) {
 float32 angle = 0;
 float32 speed = 0;
 float32 Kp = 300.0f, Kd = 30.0f;
-float time_step = 0.0333f;
+float time_step = 0.016667f;
 float position[3] = {0, 0, 0};
 clock_t preTime;
 extern class b2Draw *debugDraw;
@@ -294,7 +282,7 @@ struct Body : BodyInterface {
 Body body;
 #endif
 void box2d_init() {
-  restore[0] = "save";
+  restore[0] = "pushNetwork";
   restore[1] = "runThread";
   restore[2] = "saveNetwork";
   restore[3] = "setRunning";
@@ -305,27 +293,29 @@ void box2d_init() {
   w = new b2World(g);
   w->SetDebugDraw(debugDraw);
   debugDraw->SetFlags(b2Draw::e_shapeBit /* | b2Draw::e_jointBit*/);
-  b2BodyDef def;
-  def.type = b2_staticBody;
-  m_groundBody = w->CreateBody(&def);
-  b2PolygonShape box; // = new b2PolygonShape();
-  box.SetAsBox(10.f, .2f, b2Vec2(0, -.2), 0);
-  m_groundBody->CreateFixture(&box, 1);
-  b2Body *t = m_groundBody;
-  box.SetAsBox(.2f, 5.f, b2Vec2(10.2f, 5), 0);
-  m_groundBody->CreateFixture(&box, 1);
-  box.SetAsBox(.2f, 5.f, b2Vec2(-10.2f, 5), 0);
-  m_groundBody->CreateFixture(&box, 1);
-  def.type = b2_dynamicBody;
-  def.angle = 1;
-  box.SetAsBox(.28f, .42f);
-  for (int i = 0; i < 20; ++i) {
-    def.position.Set(8 * drand48() - 4, 1 + drand48() * 11);
-    w->CreateBody(&def)->CreateFixture(&box, 1);
-  }
-  {
+  if (0) {
+    b2BodyDef def;
+    def.type = b2_staticBody;
+    m_groundBody = w->CreateBody(&def);
+    b2PolygonShape box; // = new b2PolygonShape();
+    box.SetAsBox(10.f, .2f, b2Vec2(0, -.2), 0);
+    m_groundBody->CreateFixture(&box, 1);
+    b2Body *t = m_groundBody;
+    box.SetAsBox(.2f, 5.f, b2Vec2(10.2f, 5), 0);
+    m_groundBody->CreateFixture(&box, 1);
+    box.SetAsBox(.2f, 5.f, b2Vec2(-10.2f, 5), 0);
+    m_groundBody->CreateFixture(&box, 1);
+    def.type = b2_dynamicBody;
+    def.angle = 1;
+    box.SetAsBox(.28f, .42f);
+    for (int i = 0; i < 20; ++i) {
+      def.position.Set(8 * drand48() - 4, 1 + drand48() * 11);
+      w->CreateBody(&def)->CreateFixture(&box, 1);
+    }
     def.allowSleep = false;
     def.angle = 0.0;
+  }
+  {
     // def.gravityScale = 0;
     b2Filter filter;
     filter.groupIndex = -1;
@@ -351,26 +341,18 @@ void box2d_init() {
     init_pd(&body);
 #endif
     {
-      box.SetAsBox(0.5f, 1.5f, b2Vec2(0, 1.0f), 0.0f);
-      def.gravityScale = 0.0;
-      def.position.Set(0.0, 12.0);
-      b2Body *a = w->CreateBody(&def);
-      a->CreateFixture(&box, 1)->SetFilterData(filter);
-      /*a->SetLinearDamping(0.1);
-      a->SetAngularDamping(1.0);*/
       if (1) {
-        /*b2RevoluteJointDef j;
-        j.Initialize(m_groundBody, a, b2Vec2(def.position.x, def.position.y));
-        auto b = (b2RevoluteJoint *)w->CreateJoint(&j);*/
-        robot.Init(a, "data/tmp");
-        /*
-                robot.train = false;
-                robot.net.s = 0.1;
-                robot.maxStep = 200;*/
+        robot.Init(w, 1, "data/tmp");
       }
     }
   }
+  for (auto b = w->GetBodyList(); b; b = b->GetNext())
+    if (b->GetType() == b2_staticBody) {
+      m_groundBody = b;
+      break;
+    }
 }
+static int sub_step = 1;
 void box2d_step() {
   if (running) {
 #ifdef TEST_PD
@@ -381,9 +363,14 @@ void box2d_step() {
     } else
       body.updatePD();
 #endif
-    w->Step(time_step, 8, 5);
-    robot.Step();
+    for (int i = 0; i < sub_step; ++i) {
+      robot.Action();
+      w->Step(time_step, 25, 10);
+      robot.Step();
+    }
   }
+  if (saved > 0)
+    --saved;
 }
 void box2d_quit() {
 #ifdef TEST_PD
@@ -415,8 +402,7 @@ static const int SCROLL_AREA_PADDING = 24;
 static const int INDENT_SIZE = 64;
 static const int AREA_HEADER = 112;
 } // namespace ui
-extern float valueAngle;
-extern float jointAngle;
+
 int stateSize = 0, inputSize = 0;
 void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
               int scroll) {
@@ -430,18 +416,18 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
     over = false;
     ++ctrl;
   }
-  sprintf(statString, "v: %f, j: %f", valueAngle, jointAngle);
+    // sprintf(statString, "v: %f, j: %f", valueAngle, jointAngle);
 #ifdef USE_UI
   char info[260];
-  sprintf(info, "(%3d ,%2d)", robot.step, robot.iter);
+  sprintf(info, "(%3d ,%2d code: %2d)", robot.train, robot.trains, robot.code);
   int size = (ui::AREA_HEADER + ui::BUTTON_HEIGHT * 3 +
               ui::DEFAULT_SPACING * 2 + ui::SCROLL_AREA_PADDING);
 #ifndef DEMO
   size += (ui::BUTTON_HEIGHT + ui::DEFAULT_SPACING) * 4;
 #endif
   if (state_show)
-    size += ui::BUTTON_HEIGHT * 3 +
-            ui::DEFAULT_SPACING * 2; // btMax(width, height) * 3 / 8;
+    size += ui::BUTTON_HEIGHT * 2 +
+            ui::DEFAULT_SPACING * 1; // btMax(width, height) * 3 / 8;
   over |= imguiBeginScrollArea(
       info, width - b2Min(width, height) * 2 / 3 - (width > height ? 120 : 0),
       height - size - 60, b2Min(width, height) * 2 / 3 - 10, size,
@@ -453,16 +439,25 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
   if (imguiButton(running ? "Pause" : "Run", true)) {
     running = !running;
   }
-/*if (imguiButton("Train", true)) {
-        inv_motor = true;
-}*/
+  if (imguiButton("Train", true)) {
+    if (sub_step > 1)
+      sub_step = 1;
+    else
+      sub_step = 50;
+  }
+
+  if (imguiButton(saved ? "Saved" : "Save", true)) {
+    robot.SaveNet();
+    saved = 60;
+  }
 // imguiLabel("Label");
 #ifndef DEMO
-  sprintf(info, "%.4f %.4f", /*robot.net.tuple->scale[0],
-          robot.net.tuple->scale[1]*/ 0.0f,
-          0.0f);
-
-  imguiSlider(info, &robot.net.exp, 0.0, 2.0, 0.001, true);
+  if (robot.net.scale.size() == 4)
+    sprintf(info, "%.3f %.3f %.3f %.3f", robot.net.scale[0], robot.net.scale[1], robot.net.scale[2], robot.net.scale[3]);
+  else
+    sprintf(info, "scale size %lu", robot.net.scale.size());
+  imguiLabel(info);
+  imguiSlider("v_loss", &robot.net.exp, 0.0, 20.0, 0.1, true);
   imguiSlider("zoom", &g_camera.m_zoom, 0.25, 5.0, 0.001, true);
 #ifdef TEST_PD
   if (imguiButton(updatePD ? "mutiPD" : "Signle", true)) {
@@ -489,8 +484,8 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
       if (imguiItem(info, true)) {
         switch (i) {
         case 0:
-          robot.SaveNet();
-          restore[i] = "saved";
+          testBox::syncNetwork(-1);
+          // restore[i] = "saved";
           break;
         case 1: {
           int state = testBox::runLearnning(&robot);
@@ -499,8 +494,7 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
             testBox::syncNetwork(3);
           } else if (state == 0) {
             restore[i] = "runThread ok";
-            robot.train = false;
-            robot.maxStep = 200;
+            robot.train = 0;
           } else {
             restore[i] = "runThread err";
           }
