@@ -27,7 +27,7 @@ struct Net {
 	float getValues(const std::vector<float> &input, std::vector<float> &output, int batchSize = 1024);
 	void Save(const std::string &model_file);
 	void Load(const std::string &model_file);
-	void check(float weight_decay = 1);
+	float check(float weight_decay = 1);
 	std::vector<float> local_data;
 	std::vector<float> batch_data;
 };

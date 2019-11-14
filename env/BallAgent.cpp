@@ -2,6 +2,7 @@
 #include <ui/DebugDraw.h>
 #include <vector>
 #define BODY_COUNT 5
+extern int way;
 struct BallAgent : public Agent {
   b2Body *main;
   b2Body *legs[2];
@@ -10,13 +11,13 @@ struct BallAgent : public Agent {
   b2RevoluteJoint *joints[BODY_COUNT - 1];
   b2RevoluteJoint *legJoints[2];
   b2RevoluteJoint *footJoints[2];
+  float32 scale[2];
+  float32 bias[2];
   b2Vec2 position, pt, ct;
-  float32 footDown[2], plan[2];
-  // std::vector<DataType> state;
-  // std::vector<DataType> action;
+  float32 footDown[2], plan[2], power;
   static std::vector<int> target;
   bool testTouch, mirror = true, pd = false;
-  int step = 0, id;
+  int step = 0, id, iter;
   virtual void create(int id, b2World *w, const b2Vec2 &position,
                       const float32 &angle) override {
     if (mirror && target.size() < STATE_SIZE) {
@@ -29,6 +30,7 @@ struct BallAgent : public Agent {
     }
     this->position = position;
     this->id = id;
+    iter = 0;
     b2BodyDef def;
     def.allowSleep = false;
     def.type = b2_dynamicBody;
@@ -56,7 +58,7 @@ struct BallAgent : public Agent {
     (foots[0] = w->CreateBody(&def))
         ->CreateFixture(&box, 1.0f)
         ->SetFilterData(filter);
-    box.SetAsBox(1.5f, 1.0f, b2Vec2(0, 0.5f), 0.0f);
+    box.SetAsBox(1.5f, 1.0f, b2Vec2(0, -0.125f), 0.0f);
     def.position = position;
     (main = w->CreateBody(&def))
         ->CreateFixture(&box, 1.0f)
@@ -87,6 +89,8 @@ struct BallAgent : public Agent {
       legJoints[0] = (b2RevoluteJoint *)w->CreateJoint(&jdef);
       jdef.Initialize(main, legs[1], position);
       legJoints[1] = (b2RevoluteJoint *)w->CreateJoint(&jdef);
+      scale[0] = (jdef.upperAngle - jdef.lowerAngle) * 0.5;
+      bias[0] = (jdef.upperAngle + jdef.lowerAngle) * 0.5;
     }
     {
       b2RevoluteJointDef jdef;
@@ -98,6 +102,8 @@ struct BallAgent : public Agent {
       footJoints[0] = (b2RevoluteJoint *)w->CreateJoint(&jdef);
       jdef.Initialize(legs[1], foots[1], def.position);
       footJoints[1] = (b2RevoluteJoint *)w->CreateJoint(&jdef);
+      scale[1] = (jdef.upperAngle - jdef.lowerAngle) * 0.5;
+      bias[1] = (jdef.upperAngle + jdef.lowerAngle) * 0.5;
     }
     // state.resize(STATE_SIZE, 0);
     // action.resize(ACTION_SIZE, 0);
@@ -125,8 +131,8 @@ struct BallAgent : public Agent {
   }
   virtual void reset(DataType *output) override {
     step = 0;
-    auto init_speed = drand48() * 3;
-    auto init_ang = (drand48() - 0.5) * 3;
+    auto init_speed = 0; // drand48() * 3;
+    auto init_ang = 0;   // (drand48() - 0.5) * 3;
     for (int i = 0; i < BODY_COUNT; ++i) {
       bodies[i]->SetTransform(position, 0.0f);
       bodies[i]->SetLinearVelocity(b2Vec2(init_speed, 0.0));
@@ -148,32 +154,37 @@ struct BallAgent : public Agent {
     footDown[1 - (id % 2)] = 1.0f;
     plan[0] = footDown[0];
     plan[1] = footDown[1];
+    power = 0;
+    ++iter;
     update(output, NULL);
   }
   virtual void apply(const DataType *input) override {
     ++step;
     float32 angle, speed;
     float32 Kp = 80.0f, Kd = 10.0f;
+    power = 0;
     int legID = plan[0] > plan[1] ? 0 : 1;
     for (int j = 0; j < 2; ++j) {
       int i = (legID == 1 && mirror) ? (1 - j) : j;
       {
         auto joint = legJoints[j];
-        float turque =
-            (input[i * 2 + 0] - (angle = joint->GetJointAngle())) * Kp -
-            (speed = joint->GetJointSpeed()) * Kd;
+        float turque = (input[i * 2 + 0] * scale[0] + bias[0] -
+                        (angle = joint->GetJointAngle())) *
+                           Kp -
+                       (speed = joint->GetJointSpeed()) * Kd;
         joint->SetMotorSpeed(turque > 0 ? 30.0f : -30.0f);
         joint->SetMaxMotorTorque(b2Abs(turque));
-        // power += b2Abs(turque);
+        power += b2Abs(turque);
       }
       {
         auto joint = footJoints[j];
-        float turque =
-            (input[i * 2 + 1] - (angle = joint->GetJointAngle())) * Kp -
-            (speed = joint->GetJointSpeed()) * Kd;
+        float turque = (input[i * 2 + 1] * scale[1] + bias[1] -
+                        (angle = joint->GetJointAngle())) *
+                           Kp -
+                       (speed = joint->GetJointSpeed()) * Kd;
         joint->SetMotorSpeed(turque > 0 ? 50.0f : -50.0f);
         joint->SetMaxMotorTorque(b2Abs(turque));
-        // power += b2Abs(turque);
+        power += b2Abs(turque);
       }
     }
   }
@@ -186,10 +197,10 @@ struct BallAgent : public Agent {
     for (int i = 0; i < BODY_COUNT; ++i) {
 
       if (i > 0) {
-        output[index++] = (bodies[i]->GetWorldCenter().x - root.x) / 5;
-        output[index++] = (bodies[i]->GetWorldCenter().y - root.y) / 5;
+        output[index++] = (bodies[i]->GetWorldCenter().x - root.x) / 2;
+        output[index++] = (bodies[i]->GetWorldCenter().y - root.y) / 2;
       } else {
-        output[index++] = (root.y - position.y) / 5;
+        output[index++] = (root.y - position.y) / 2;
       }
       output[index++] = bodies[i]->GetAngle() / 3;
       output[index++] = bodies[i]->GetAngularVelocity() / 5;
@@ -210,13 +221,15 @@ struct BallAgent : public Agent {
     // float32 Impulse = 0;
     // float32 Impulses[2] = {0, 0};
     for (size_t i = 0; i < 2; i++) {
+      output[index] = 0;
       footDown[i] *= 0.925f; /*
        output[5 + i * 12] = 0;
        output[6 + i * 12] = 0;*/
       if (testTouch && step > 0)
         for (b2ContactEdge *e = foots[i]->GetContactList(); e; e = e->next) {
           if (e->contact && e->contact->IsTouching()) {
-            footDown[i] = 1.0f; /*
+            footDown[i] = 1.0f;
+            output[index] = 1.0f; /*
              auto m = e->contact->GetManifold();
              for (size_t j = 0; j < m->pointCount; ++j) {
                output[5 + i * 12] += m->points[j].tangentImpulse;
@@ -227,10 +240,16 @@ struct BallAgent : public Agent {
         }
       /*Impulse += b2Abs(output[5 + i * 12]);
       Impulses[i] = b2Abs(output[6 + i * 12]);*/
-      output[index] = footDown[i];
+      // output[index] = footDown[i];
       ++index;
     }
-    output[index] = (id / 4.0 + 1.0) * 0.25;
+    int targetIndex = index;
+    output[index++] = 1.0;
+    output[index++] = 0.0;
+    output[index++] = 0.0;
+    int targetVelIndex = index;
+    output[index++] = ((id + way) % 2) * 2 - 1;
+    output[index++] = 0.0;
     bool mainDown = false;
     if (testTouch && step > 0)
       for (b2ContactEdge *e = main->GetContactList(); e; e = e->next) {
@@ -238,21 +257,52 @@ struct BallAgent : public Agent {
           mainDown = true;
         }
       }
+#if 0
+    float add = 0;
+    int legID = plan[0] > plan[1] ? 0 : 1;
+    if (footDown[1 - legID] == 1.0f) {
+      float forward = foots[1 - legID]->GetWorldPoint(b2Vec2(0, -1.5f)).x -
+                      foots[legID]->GetWorldPoint(b2Vec2(0, -1.5f)).x;
+      if (forward > 0 == ct.x > 0) {
+        legID = 1 - legID;
+        add = 0.2 - powf(1.0f - (b2Abs(forward)), 2) * 0.1f;
+      } else
+        add = -0.2f;
+    } else {
+      auto v =
+          foots[1 - legID]->GetLinearVelocityFromLocalPoint(b2Vec2(0, -1.5));
+      add += -powf(fmaxf(v.y, 0) * 0.002, 2.0f) * 0.75;
+      add += -powf((6.0f - v.x) * 0.0002, 2.0f) * 0.25;
+    }
+      //add = -powf(power * 0.0001, 2);
+    if (reward) {
+      *reward = add - 0.1 * powf(1 - output[3], 2) -
+                powf(output[1] + 0.2 * output[2], 2);
+      if (mainDown) {
+        *reward -= 2.5f;
+        return true;
+      }
+    }
+#else
+
     DataType add = 0.0;
     int legID = plan[0] > plan[1] ? 0 : 1;
     float forward = foots[1 - legID]->GetWorldPoint(b2Vec2(0, -1.5f)).x -
                     foots[legID]->GetWorldPoint(b2Vec2(0, -1.5f)).x;
-    if (forward > 0.2f) {
-      if (footDown[1 - legID] == 1.0f) {
+    forward *= output[targetIndex + 3] > 0.0 ? 1.0 : -1.0;
+
+    if (footDown[1 - legID] == 1.0f) {
+      if (footDown[legID] == 1.0f) {
         legID = 1 - legID;
         // add += exp(-powf(Impulses[legID] * 0.25f, 2));
-        add += exp(-powf(forward - 1.5f, 2)) * 0.75;
         plan[legID] = 1.0f;
         plan[1 - legID] = 0.0f;
       }
-    } else if (footDown[1 - legID] == 0.0f) {
-      add += 0.2f;
+      add += exp(-powf((2.5f - forward) * 0.4, 2)) * 0.5;
     }
+    /* else if (footDown[1 - legID] == 0.0f) {
+         add += 0.2f;
+    }*/
     if (mirror && legID == 1) {
       for (int i = 0; i < STATE_SIZE; ++i) {
         int j = target[i];
@@ -263,44 +313,54 @@ struct BallAgent : public Agent {
         }
       }
     }
-    {
-      auto v =
-          foots[1 - legID]->GetLinearVelocityFromLocalPoint(b2Vec2(0, -1.5));
-      add += -powf(fmaxf(v.y, 0) * 0.002, 2.0f) * 0.75;
-      add += -powf((5.0f * output[index] - v.x) * 0.0002, 2.0f) * 0.25;
-    }
-    {
-      auto v = foots[legID]->GetLinearVelocityFromLocalPoint(b2Vec2(0, -1.5));
-      add += -powf(v.y * 0.03, 2.0f) * 0.75;
-      add += -powf(v.x * 0.01, 2.0f) * 0.75;
-    }
-    // add += -powf(Impulse * 0.2f, 2) * 0.25;
-    add += plan[0] * (footDown[0] - 0.5) * 1.5;
-    add += plan[1] * (footDown[1] - 0.5) * 1.5;
-    // output[index++] = plan[0];
-    // output[index++] = plan[1];
-    /*if (footDown[0] < 0.8f && footDown[1] < 0.8f) {
-            add -= 1.6f;
-    }*/
     if (reward) {
-      *reward = -powf(0.25 * (ct.x - 4.0f * output[index]), 2) * 0.25f -
-                powf(root.y, 2) - powf(ct.y * 0.5f, 2) * 0.2f -
-                3 * powf(main->GetAngle(), 2);
-      *reward += add;
+      {
+        auto v =
+            foots[1 - legID]->GetLinearVelocityFromLocalPoint(b2Vec2(0, -1.5));
+        add += -powf(fmaxf(v.y, 0) * 0.002, 2.0f) * 0.75;
+        add += -powf((9.0f * output[targetIndex] - v.x) * 0.005, 2.0f) * 0.25;
+      }
+      {
+        auto v = foots[legID]->GetLinearVelocityFromLocalPoint(b2Vec2(0, -1.5));
+        add += -powf(v.y * 0.03, 2.0f) * 0.5;
+        add += -powf(v.x * 0.1, 2.0f) * 0.75;
+      }
+      // add += -powf(Impulse * 0.2f, 2) * 0.25;
+      add += plan[0] * (footDown[0] - 0.5) * 1.5;
+      add += plan[1] * (footDown[1] - 0.5) * 1.5;
+      // output[index++] = plan[0];
+      // output[index++] = plan[1];
+      /*if (footDown[0] < 0.8f && footDown[1] < 0.8f) {
+              add -= 1.6f;
+      }*/
+      DataType q = 0;
+      for (int i = 0; i < 5; ++i)
+        q += pow(output[i] - output[targetIndex + i], 2);
+      *reward = 0.5 + exp(-q * 3) + add * 0.25;
       if (mainDown) {
         *reward -= 1.5f;
-        return true;
+        /* if (b2Abs(main->GetAngle()) > 2) {
+         *reward -= 1.0f;*/
+        //  }
       }
     }
-    if (pt.x > position.x + 20.0f) {
+    if (pt.x > position.x + 30.0f) {
       for (int i = 0; i < BODY_COUNT; ++i) {
         auto p = bodies[i]->GetPosition();
-        p.x -= 20;
+        p.x -= 30;
+        auto r = bodies[i]->GetAngle();
+        bodies[i]->SetTransform(p, r);
+      }
+    } else if (pt.x < position.x - 20.0f) {
+      for (int i = 0; i < BODY_COUNT; ++i) {
+        auto p = bodies[i]->GetPosition();
+        p.x += 20;
         auto r = bodies[i]->GetAngle();
         bodies[i]->SetTransform(p, r);
       }
     }
-    return false;
+#endif
+    return mainDown;
   }
   virtual void display() override {
     g_debugDraw.DrawSegment(b2Vec2(pt.x, 0), b2Vec2(pt.x, id / -4.0 - 1.0),

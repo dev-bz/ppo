@@ -1,7 +1,7 @@
 #pragma once
 #include "n.hpp"
 struct tExpTuple {
-  std::vector<float> states, world;
+  std::vector<float> states, n_states;
   std::vector<float> actions;
   std::vector<float> rewards;
   std::vector<bool> dones;
@@ -28,8 +28,7 @@ struct Trainer {
   const std::vector<float> &preUpdate(const std::vector<float> &input);
   int postUpdate(int id, float shape, const std::vector<float> &o_input,
                  const std::vector<float> &n_input,
-                 const std::vector<float> &act, bool done,
-                 const std::vector<float> &real);
+                 const std::vector<float> &act, bool done);
   void gae(std::vector<float> adv);
   void save(const char *model);
   void load(const char *model);

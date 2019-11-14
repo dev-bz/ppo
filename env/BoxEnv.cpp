@@ -2,7 +2,7 @@
 #include <env/BoxEnv.hpp>
 #include <mutex>
 namespace testBox {
-static const std::vector<DataType> empty;
+//static const std::vector<DataType> empty;
 void Robot::Init(b2World *m_world, int pgType, const char *model) {
   net.initTrainer(STATE_SIZE, ACTION_SIZE, pgType);
   if (model)
@@ -52,9 +52,12 @@ int Robot::Step() {
   int ret = 0;
   for (int i = 0; i < AGENT_COUNT; ++i) {
     DataType reward = 0;
-    bool done = agents[i]->update(n_state.data(), &reward);
-    if (train)
-      ret |= net.postUpdate(i, reward, obs[i], n_state, action[i], done, empty);
+    bool done;
+    if (train) {
+      done = agents[i]->update(n_state.data(), &reward);
+      ret |= net.postUpdate(i, reward, obs[i], n_state, action[i], done);
+    } else
+      done = agents[i]->update(n_state.data(), nullptr);
     if (done)
       agents[i]->reset(obs[i].data());
     else
@@ -129,6 +132,7 @@ void syncNetwork(int saveIter) {
   lock.lock();
   if (saveIter < 0) {
     if (target) {
+      robot_.trains = target->trains;
       target->code =
           Net::CopyModel(*target->net.value.tlocal, *robot_.net.value.tlocal);
       target->code |=
@@ -158,6 +162,7 @@ void syncNetwork(int saveIter) {
           target->net.tuples[0]->values = robot_.net.tuples[0]->values;
           target->net.tuples[0]->adv = robot_.net.tuples[0]->adv;
           target->net.tuples[0]->rewards = robot_.net.tuples[0]->rewards;
+		  target->net.tuples[0]->dones = robot_.net.tuples[0]->dones;
           target->net.tuples[0]->scale = robot_.net.tuples[0]->scale;
         }
         target->code =
@@ -184,6 +189,7 @@ static void sync_Network() {
       target->net.tuples[0]->values = robot_.net.tuples[0]->values;
       target->net.tuples[0]->adv = robot_.net.tuples[0]->adv;
       target->net.tuples[0]->rewards = robot_.net.tuples[0]->rewards;
+	  target->net.tuples[0]->dones = robot_.net.tuples[0]->dones;
       target->net.tuples[0]->scale = robot_.net.tuples[0]->scale;
     }
     target->code =

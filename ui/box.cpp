@@ -10,6 +10,7 @@
 // #define TEST_PD
 static int state_scroll = 0, save_scroll = 0;
 static bool state_show = false;
+
 static int ctrl = 0;
 static int touch = 0;
 static int running = 1;
@@ -391,6 +392,7 @@ void box2d_draw() {
   w->DrawDebugData();
 }
 #define USE_UI
+int way = 0;
 namespace ui {
 static const int BUTTON_HEIGHT = 80;
 static const int SLIDER_HEIGHT = 80;
@@ -420,14 +422,11 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
 #ifdef USE_UI
   char info[260];
   sprintf(info, "(%3d ,%2d code: %2d)", robot.train, robot.trains, robot.code);
-  int size = (ui::AREA_HEADER + ui::BUTTON_HEIGHT * 3 +
-              ui::DEFAULT_SPACING * 2 + ui::SCROLL_AREA_PADDING);
-#ifndef DEMO
-  size += (ui::BUTTON_HEIGHT + ui::DEFAULT_SPACING) * 4;
-#endif
+  int size = (ui::AREA_HEADER + ui::BUTTON_HEIGHT + ui::SCROLL_AREA_PADDING);
+  size += (ui::BUTTON_HEIGHT + ui::DEFAULT_SPACING) * 7;
   if (state_show)
-    size += ui::BUTTON_HEIGHT * 2 +
-            ui::DEFAULT_SPACING * 1; // btMax(width, height) * 3 / 8;
+    size += ui::BUTTON_HEIGHT * 3 +
+            ui::DEFAULT_SPACING * 2; // btMax(width, height) * 3 / 8;
   over |= imguiBeginScrollArea(
       info, width - b2Min(width, height) * 2 / 3 - (width > height ? 120 : 0),
       height - size - 60, b2Min(width, height) * 2 / 3 - 10, size,
@@ -440,24 +439,46 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
     running = !running;
   }
   if (imguiButton("Train", true)) {
-    if (sub_step > 1)
+    robot.train = !robot.train;
+    /*if (sub_step > 1)
       sub_step = 1;
     else
-      sub_step = 50;
+      sub_step = 25;*/
+  }
+  if (imguiButton(way?"Left":"Right", true)) {
+    way = 1 - way;
   }
 
   if (imguiButton(saved ? "Saved" : "Save", true)) {
     robot.SaveNet();
     saved = 60;
   }
+  static int background=-1;
+  sprintf(info, "background: %d", background);
+  if (imguiButton(info, true)) {
+    background = testBox::runLearnning(&robot);
+    if (background == 2) {
+      testBox::setRunning(false);
+      background = -1;
+    } else if (background == 0) {
+      robot.train = 0;
+    }
+  }
 // imguiLabel("Label");
 #ifndef DEMO
   if (robot.net.scale.size() == 4)
-    sprintf(info, "%.3f %.3f %.3f %.3f", robot.net.scale[0], robot.net.scale[1], robot.net.scale[2], robot.net.scale[3]);
+    sprintf(info, "%d %.3f %.3f %.3f %.3f", sub_step, robot.net.scale[0], robot.net.scale[1],
+            robot.net.scale[2], robot.net.scale[3]);
   else
     sprintf(info, "scale size %lu", robot.net.scale.size());
-  imguiLabel(info);
-  imguiSlider("v_loss", &robot.net.exp, 0.0, 20.0, 0.1, true);
+  //imguiLabel(info);
+  if (imguiButton(info, true)) {
+    if (sub_step > 1)
+      sub_step = 1;
+    else
+      sub_step = 25;
+  }
+  imguiSlider("v_loss", &robot.net.exp, 0.0, 20.0, 0.00001, true);
   imguiSlider("zoom", &g_camera.m_zoom, 0.25, 5.0, 0.001, true);
 #ifdef TEST_PD
   if (imguiButton(updatePD ? "mutiPD" : "Signle", true)) {
@@ -468,6 +489,7 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
   }
 #endif
 #endif
+#if 0
   if (imguiCollapse(statString, 0, state_show, true)) {
     if (state_show) {
       save_scroll = state_scroll;
@@ -515,6 +537,7 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
       }
     }
   }
+#endif
   imguiEndScrollArea();
   imguiEndFrame();
 #endif
