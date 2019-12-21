@@ -73,8 +73,9 @@ void cImpPDController::InitGains() {
 		if (/*pd_ctrl.IsValid()*/ 1) {
 			int param_offset = mChar->GetParamOffset(j);
 			int param_size = mChar->GetParamSize(j);
-			double kp = 10.0; // pd_ctrl.GetKp();
-			double kd = 1.0;	// pd_ctrl.GetKd();
+      cPDController::tParams p = mPDParams.row(j);
+      double kp = p(cPDController::eParamKp);
+      double kd = p(cPDController::eParamKd);
 			mKp.segment(param_offset, param_size) = Eigen::VectorXd::Ones(param_size) * kp;
 			mKd.segment(param_offset, param_size) = Eigen::VectorXd::Ones(param_size) * kd;
 		}

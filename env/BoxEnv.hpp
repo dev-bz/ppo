@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string>
 #include <vector>
-#define AGENT_COUNT 12
+#define AGENT_COUNT 24
 namespace testBox {
 struct Robot {
   Agent *agents[AGENT_COUNT];

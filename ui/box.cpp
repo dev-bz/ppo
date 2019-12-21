@@ -14,6 +14,7 @@ static bool state_show = false;
 static int ctrl = 0;
 static int touch = 0;
 static int running = 1;
+static int realTime = 0;
 static int subStep = 1;
 bool inv_motor = false;
 bool over = false;
@@ -79,26 +80,12 @@ void Robot::Draw() {
     auto net_tuple = net.tuples[0];
     const std::vector<float> &vals = net_tuple->values;
     for (int i = 0; i < 256; ++i) {
-      g_debugDraw.DrawSegment(
-          b2Vec2(-4, i * 0.1 + 4.5),
-          b2Vec2(vals[i] * net_tuple->scale - 4, i * 0.1 + 4.5),
-          b2Color(0.25, 1, 0.25));
-      g_debugDraw.DrawSegment(
-          b2Vec2(-7, i * 0.1 + 4.5),
-          b2Vec2(net_tuple->returns[i] * net_tuple->scale - 7, i * 0.1 + 4.5),
-          b2Color(1, 0.25, 0.25));
-      g_debugDraw.DrawSegment(
-          b2Vec2(-5.5, i * 0.1 + 4.5),
-          b2Vec2(net_tuple->rewards[i] * 0.75 - 5.5, i * 0.1 + 4.5),
-          net_tuple->dones[i] ? b2Color(0.85, 0.85, 1) : b2Color(1, 0.5, 1));
-      g_debugDraw.DrawSegment(
-          b2Vec2(-8.5, i * 0.1 + 4.5),
-          b2Vec2(net_tuple->adv[i] * 0.25 - 8.5, i * 0.1 + 4.5),
-          b2Color(1, 1, 1));
+      g_debugDraw.DrawSegment(b2Vec2(-4, i * 0.1 + 4.5), b2Vec2(vals[i] * net_tuple->scale - 4, i * 0.1 + 4.5), b2Color(0.25, 1, 0.25));
+      g_debugDraw.DrawSegment(b2Vec2(-7, i * 0.1 + 4.5), b2Vec2(net_tuple->returns[i] * net_tuple->scale - 7, i * 0.1 + 4.5), b2Color(1, 0.25, 0.25));
+      g_debugDraw.DrawSegment(b2Vec2(-5.5, i * 0.1 + 4.5), b2Vec2(net_tuple->rewards[i] * 0.75 - 5.5, i * 0.1 + 4.5), net_tuple->dones[i] ? b2Color(0.85, 0.85, 1) : b2Color(1, 0.5, 1));
+      g_debugDraw.DrawSegment(b2Vec2(-8.5, i * 0.1 + 4.5), b2Vec2(net_tuple->adv[i] * 0.25 - 8.5, i * 0.1 + 4.5), b2Color(1, 1, 1));
     }
-    g_debugDraw.DrawSegment(b2Vec2(-7, +4.5),
-                            b2Vec2(-7, net_tuple->position * 0.1 + 4.5),
-                            b2Color(1, 1, 1));
+    g_debugDraw.DrawSegment(b2Vec2(-7, +4.5), b2Vec2(-7, net_tuple->position * 0.1 + 4.5), b2Color(1, 1, 1));
   } /* else {
      g_debugDraw.DrawString(16, 32, "Waiting...");
    }*/
@@ -183,7 +170,6 @@ float32 speed = 0;
 float32 Kp = 300.0f, Kd = 30.0f;
 float time_step = 0.016667f;
 float position[3] = {0, 0, 0};
-clock_t preTime;
 extern class b2Draw *debugDraw;
 #ifdef TEWT_PD
 bool updatePD = true;
@@ -217,8 +203,7 @@ struct PDControlller {
       ++step;
   }
   void updatePD() {
-    float turque = (tar - (angle = joint->GetJointAngle())) * Kp -
-                   (speed = joint->GetJointSpeed()) * Kd;
+    float turque = (tar - (angle = joint->GetJointAngle())) * Kp - (speed = joint->GetJointSpeed()) * Kd;
     joint->SetMotorSpeed(turque > 0 ? 100.0f : -100.0f);
     joint->SetMaxMotorTorque(b2Abs(turque));
   }
@@ -241,9 +226,7 @@ struct PDControlller {
 };
 struct Body : BodyInterface {
   std::vector<PDControlller *> joints;
-  void append(b2Body *a, b2Body *b) {
-    joints.push_back(new PDControlller(w, a, b));
-  }
+  void append(b2Body *a, b2Body *b) { joints.push_back(new PDControlller(w, a, b)); }
   void step() {
     for (auto &joint : joints)
       joint->update();
@@ -282,6 +265,7 @@ struct Body : BodyInterface {
 };
 Body body;
 #endif
+static clock_t goalTime = 0;
 void box2d_init() {
   restore[0] = "pushNetwork";
   restore[1] = "runThread";
@@ -328,8 +312,7 @@ void box2d_init() {
     a->CreateFixture(&box, 1)->SetFilterData(filter);
     if (1) {
       b2RevoluteJointDef j;
-      j.Initialize(m_groundBody, a,
-                   b2Vec2(def.position.x - 3.0, def.position.y));
+      j.Initialize(m_groundBody, a, b2Vec2(def.position.x - 3.0, def.position.y));
       w->CreateJoint(&j);
     }
     for (int i = 0; i < 9; ++i) {
@@ -352,6 +335,8 @@ void box2d_init() {
       m_groundBody = b;
       break;
     }
+  if (realTime)
+    goalTime = clock();
 }
 static int sub_step = 1;
 void box2d_step() {
@@ -364,6 +349,11 @@ void box2d_step() {
     } else
       body.updatePD();
 #endif
+    if (realTime) {
+      if (clock() < goalTime)
+        return;
+      goalTime += 16666;
+    }
     for (int i = 0; i < sub_step; ++i) {
       robot.Action();
       w->Step(time_step, 25, 10);
@@ -406,8 +396,7 @@ static const int AREA_HEADER = 112;
 } // namespace ui
 
 int stateSize = 0, inputSize = 0;
-void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
-              int scroll) {
+void box2d_ui(int width, int height, int mx, int my, unsigned char mbut, int scroll) {
   if (mbut) {
     imguiBeginFrame(mx, height - my, mbut, scroll);
     ctrl = 0;
@@ -421,22 +410,23 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
     // sprintf(statString, "v: %f, j: %f", valueAngle, jointAngle);
 #ifdef USE_UI
   char info[260];
-  sprintf(info, "(%3d ,%2d code: %2d)", robot.train, robot.trains, robot.code);
+  sprintf(info, "(%3d ,%2d code: %2d)", robot.train, robot.trains, realTime);
   int size = (ui::AREA_HEADER + ui::BUTTON_HEIGHT + ui::SCROLL_AREA_PADDING);
   size += (ui::BUTTON_HEIGHT + ui::DEFAULT_SPACING) * 7;
   if (state_show)
-    size += ui::BUTTON_HEIGHT * 3 +
-            ui::DEFAULT_SPACING * 2; // btMax(width, height) * 3 / 8;
-  over |= imguiBeginScrollArea(
-      info, width - b2Min(width, height) * 2 / 3 - (width > height ? 120 : 0),
-      height - size - 60, b2Min(width, height) * 2 / 3 - 10, size,
-      &state_scroll);
+    size += ui::BUTTON_HEIGHT * 3 + ui::DEFAULT_SPACING * 2; // btMax(width, height) * 3 / 8;
+  over |= imguiBeginScrollArea(info, width - b2Min(width, height) * 2 / 3 - (width > height ? 120 : 0), height - size - 60, b2Min(width, height) * 2 / 3 - 10, size, &state_scroll);
   if (imguiButton("Reset", true)) {
     box2d_quit();
     box2d_init();
   }
   if (imguiButton(running ? "Pause" : "Run", true)) {
     running = !running;
+    if (running) {
+      realTime = !realTime;
+      if (realTime)
+        goalTime = clock();
+    }
   }
   if (imguiButton("Train", true)) {
     robot.train = !robot.train;
@@ -445,7 +435,7 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
     else
       sub_step = 25;*/
   }
-  if (imguiButton(way?"Left":"Right", true)) {
+  if (imguiButton(way ? "Force" : "Free", true)) {
     way = 1 - way;
   }
 
@@ -453,7 +443,7 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
     robot.SaveNet();
     saved = 60;
   }
-  static int background=-1;
+  static int background = -1;
   sprintf(info, "background: %d", background);
   if (imguiButton(info, true)) {
     background = testBox::runLearnning(&robot);
@@ -466,12 +456,11 @@ void box2d_ui(int width, int height, int mx, int my, unsigned char mbut,
   }
 // imguiLabel("Label");
 #ifndef DEMO
-  if (robot.net.scale.size() == 4)
-    sprintf(info, "%d %.3f %.3f %.3f %.3f", sub_step, robot.net.scale[0], robot.net.scale[1],
-            robot.net.scale[2], robot.net.scale[3]);
+  if (robot.net.scale.size() >= 4)
+    sprintf(info, "%d %.3f %.3f %.3f %.3f", sub_step, robot.net.scale[0], robot.net.scale[1], robot.net.scale[2], robot.net.scale[3]);
   else
     sprintf(info, "scale size %lu", robot.net.scale.size());
-  //imguiLabel(info);
+  // imguiLabel(info);
   if (imguiButton(info, true)) {
     if (sub_step > 1)
       sub_step = 1;

@@ -207,7 +207,6 @@ int Trainer::postUpdate(int id, float shape, const std::vector<float> &o_input,
 		if (type == 0)
 			net.SetTrainParam("logprob", "logoldprob");
 		this->net.trainNet(10);
-		exp = this->net.check();
 		return 1;
 	}
 	// s = s - shape;

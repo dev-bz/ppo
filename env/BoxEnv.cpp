@@ -1,9 +1,19 @@
 #include <env/BallAgent.hpp>
 #include <env/BoxEnv.hpp>
 #include <mutex>
+float g_time = 0;
+
 namespace testBox {
-//static const std::vector<DataType> empty;
+// static const std::vector<DataType> empty;
+
+std::vector<DataType> n_state, m_new, m_old, m_action;
 void Robot::Init(b2World *m_world, int pgType, const char *model) {
+  int STATE_SIZE = agentStateSize();
+  int ACTION_SIZE = agentActionSize();
+  n_state.resize(STATE_SIZE);
+  m_new.resize(STATE_SIZE);
+  m_old.resize(STATE_SIZE);
+  m_action.resize(ACTION_SIZE);
   net.initTrainer(STATE_SIZE, ACTION_SIZE, pgType);
   if (model)
     this->model = model;
@@ -48,13 +58,15 @@ void Robot::Init(b2World *m_world, int pgType, const char *model) {
 }
 void Robot::Quit() { net.shutDown(); }
 int Robot::Step() {
-  std::vector<DataType> n_state(STATE_SIZE);
+  g_time += 0.033f;
   int ret = 0;
   for (int i = 0; i < AGENT_COUNT; ++i) {
     DataType reward = 0;
     bool done;
     if (train) {
       done = agents[i]->update(n_state.data(), &reward);
+      if (mirrorAgent(m_old.data(), m_new.data(), m_action.data(), obs[i].data(), n_state.data(), action[i].data()))
+        ret |= net.postUpdate(i + AGENT_COUNT, reward, m_old, m_new, m_action, done);
       ret |= net.postUpdate(i, reward, obs[i], n_state, action[i], done);
     } else
       done = agents[i]->update(n_state.data(), nullptr);
@@ -82,7 +94,9 @@ static void box2d_init() {
     return;
   b2Vec2 g(0, -10);
   w = new b2World(g);
+  threadAt(1);
   robot_.Init(w, 1, "data/sync");
+  threadAt(0);
 }
 static void box2d_quit() {
   robot_.Quit();
@@ -133,18 +147,16 @@ void syncNetwork(int saveIter) {
   if (saveIter < 0) {
     if (target) {
       robot_.trains = target->trains;
-      target->code =
-          Net::CopyModel(*target->net.value.tlocal, *robot_.net.value.tlocal);
-      target->code |=
-          Net::CopyModel(*target->net.net.tlocal, *robot_.net.net.tlocal); /*
-       target->code =
-           Net::CopyModel(*target->net.value.batch, *robot_.net.value.batch);
-       target->code |=
-           Net::CopyModel(*target->net.net.batch, *robot_.net.net.batch);
-       target->code =
-           Net::CopyModel(*target->net.value.local, *robot_.net.value.local);
-       target->code |=
-           Net::CopyModel(*target->net.net.local, *robot_.net.net.local);*/
+      target->code = Net::CopyModel(*target->net.value.tlocal, *robot_.net.value.tlocal);
+      target->code |= Net::CopyModel(*target->net.net.tlocal, *robot_.net.net.tlocal); /*
+                   target->code =
+                       Net::CopyModel(*target->net.value.batch, *robot_.net.value.batch);
+                   target->code |=
+                       Net::CopyModel(*target->net.net.batch, *robot_.net.net.batch);
+                   target->code =
+                       Net::CopyModel(*target->net.value.local, *robot_.net.value.local);
+                   target->code |=
+                       Net::CopyModel(*target->net.net.local, *robot_.net.net.local);*/
       for (auto t : robot_.net.tuples)
         t->position = 0;
       target->code |= 4;
@@ -162,13 +174,11 @@ void syncNetwork(int saveIter) {
           target->net.tuples[0]->values = robot_.net.tuples[0]->values;
           target->net.tuples[0]->adv = robot_.net.tuples[0]->adv;
           target->net.tuples[0]->rewards = robot_.net.tuples[0]->rewards;
-		  target->net.tuples[0]->dones = robot_.net.tuples[0]->dones;
+          target->net.tuples[0]->dones = robot_.net.tuples[0]->dones;
           target->net.tuples[0]->scale = robot_.net.tuples[0]->scale;
         }
-        target->code =
-            Net::CopyModel(*robot_.net.value.tlocal, *target->net.value.tlocal);
-        target->code |=
-            Net::CopyModel(*robot_.net.net.tlocal, *target->net.net.tlocal);
+        target->code = Net::CopyModel(*robot_.net.value.tlocal, *target->net.value.tlocal);
+        target->code |= Net::CopyModel(*robot_.net.net.tlocal, *target->net.net.tlocal);
       }
     }
   }
@@ -189,13 +199,11 @@ static void sync_Network() {
       target->net.tuples[0]->values = robot_.net.tuples[0]->values;
       target->net.tuples[0]->adv = robot_.net.tuples[0]->adv;
       target->net.tuples[0]->rewards = robot_.net.tuples[0]->rewards;
-	  target->net.tuples[0]->dones = robot_.net.tuples[0]->dones;
+      target->net.tuples[0]->dones = robot_.net.tuples[0]->dones;
       target->net.tuples[0]->scale = robot_.net.tuples[0]->scale;
     }
-    target->code =
-        Net::CopyModel(*robot_.net.value.tlocal, *target->net.value.tlocal);
-    target->code |=
-        Net::CopyModel(*robot_.net.net.tlocal, *target->net.net.tlocal);
+    target->code = Net::CopyModel(*robot_.net.value.tlocal, *target->net.value.tlocal);
+    target->code |= Net::CopyModel(*robot_.net.net.tlocal, *target->net.net.tlocal);
     lock.unlock();
   }
 }
